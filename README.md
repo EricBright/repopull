@@ -27,9 +27,10 @@ brief instead of one terminal per repo.
 The tool and the repos are separate. The **only** connection is the `root`
 setting in `config.toml`, `--root`, or the GUI's Settings page.
 
-A new install ships [`config.example.toml`](config.example.toml) with **no
-folder baked in**. Choose one in Settings on first run, or copy the example to
-a local `config.toml` (gitignored) and set `root`.
+This checkout ships [`config.example.toml`](config.example.toml) with **no
+folder baked in**; a new install starts with no folder either. Choose one in
+Settings on first run, or copy the example to a local `config.toml` (gitignored)
+and set `root`.
 
 To print the path, confirm it exists, and count the repos it finds:
 
