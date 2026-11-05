@@ -5,8 +5,8 @@ Raw notes on the user's world, tools, and terminology. Decisions live in
 
 ## The world (surveyed 2026-11-05)
 
-- **Repos root**: `<watched-root>`
-  - External disk (`<external-disk>`); large (≈6.8 GB total).
+- **Repos root**: `<watched-root>` (local, not tracked).
+  - External disk; large (≈6.8 GB total).
 - **43 git repos** (44 when `AppGlider` was added; `AniCraft`, an empty clone, was later deleted):
   - 39 at depth 1 under the root.
   - 4 nested under `LEAP 71/` — folder name contains **U+202F NARROW NO-BREAK SPACE**

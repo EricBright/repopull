@@ -27,9 +27,9 @@ brief instead of one terminal per repo.
 The tool and the repos are separate. The **only** connection is the `root`
 setting in `config.toml`, `--root`, or the GUI's Settings page.
 
-A new install ships a template with **no folder baked in**. Choose one in
-Settings on first run; the development `config.toml` in this checkout already
-points at this machine's folder.
+A new install ships [`config.example.toml`](config.example.toml) with **no
+folder baked in**. Choose one in Settings on first run, or copy the example to
+a local `config.toml` (gitignored) and set `root`.
 
 To print the path, confirm it exists, and count the repos it finds:
 
@@ -187,7 +187,8 @@ Every run writes `logs/YYYYMMDD-HHMMSS-<mode>.log` and `logs/latest.log`.
 
 ## Configuration
 
-Settings live in [`config.toml`](config.toml). Every key is documented in
+Settings live in a local `config.toml` (gitignored); start from
+[`config.example.toml`](config.example.toml). Every key is documented in
 [docs/configuration.md](docs/configuration.md). The important ones:
 
 ```toml
@@ -208,7 +209,7 @@ require_git_lfs_for_lfs_repos = true
 | `src/repopull/` | Typed Python package. |
 | `src/repopull/gui/` | Optional PySide6 interface. |
 | `packaging/` | AppImage build (`python-appimage` + pinned `appimagetool`). |
-| `config.toml` | Settings. |
+| `config.example.toml` | Template; copy to a local, gitignored `config.toml`. |
 | `docs/` | Architecture, configuration, GUI, packaging, branding, design rationale, test audit. |
 | `docs/previews/` | Screenshots used in the docs. |
 | `tests/` | Unit and integration tests (throwaway git repos). |
@@ -292,8 +293,9 @@ A previous run still holds `logs/.lock`. Wait for it, or check for a stuck
 **"watched root does not exist" / `where` says `MISSING`.**
 The watched disk is probably not mounted, or the folder moved. Run
 `./repopull.sh where` to see the exact path and where it came from, then either
-mount the disk, edit `root` in [`config.toml`](config.toml), or run with
-`--root PATH` for one run. `repopull` prints those same steps when it fails.
+mount the disk, copy [`config.example.toml`](config.example.toml) to
+`config.toml`, and edit `root`, or run with `--root PATH` for one run.
+`repopull` prints those same steps when it fails.
 
 ## Limitations
 

@@ -7,7 +7,10 @@ Resolution order for the config file:
 1. `--config PATH`
 2. `$REPOPULL_CONFIG`
 3. `$REPOPULL_HOME/config.toml`
-4. `<project>/config.toml` (the file shipped with this checkout)
+4. `<project>/config.toml` (local, gitignored; copy `config.example.toml`)
+
+The repository ships `config.example.toml`; a populated `config.toml` is
+intentionally not tracked.
 
 A missing config file is fine when no explicit path was given: built-in defaults
 apply to everything except the watched folder. With no `root`, `list`, `status`
