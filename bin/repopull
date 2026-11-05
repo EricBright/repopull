@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Launch repopull from this checkout without installing anything.
+set -euo pipefail
+
+script_path="${BASH_SOURCE[0]}"
+if command -v readlink >/dev/null 2>&1; then
+  script_path="$(readlink -f -- "$script_path")"
+fi
+project_root="$(cd -- "$(dirname -- "$script_path")/.." && pwd)"
+
+export REPOPULL_HOME="${REPOPULL_HOME:-$project_root}"
+export PYTHONPATH="${project_root}/src${PYTHONPATH:+:${PYTHONPATH}}"
+
+exec python3 -m repopull "$@"

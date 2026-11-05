@@ -1,0 +1,118 @@
+# Configuration reference
+
+## Where settings come from
+
+Resolution order for the config file:
+
+1. `--config PATH`
+2. `$REPOPULL_CONFIG`
+3. `$REPOPULL_HOME/config.toml`
+4. `<project>/config.toml` (the file shipped with this checkout)
+
+A missing config file is fine when no explicit path was given: built-in defaults
+apply to everything except the watched folder. With no `root`, `list`, `status`
+and `sync` explain how to set one (GUI Settings, `root` in the file, or
+`--root`), and `where` prints `(not configured)`.
+
+The resolved `root` is the single link to the watched data. `repopull where`
+prints it, where it came from (`config.toml key "root"`, `--root`, or
+`not configured`), whether it exists, and how many repos it contains.
+
+Command-line flags override the file. `--root` overrides `root`.
+
+## Keys
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `root` | string | **not configured** | Directory holding the watched repositories. The GUI's Settings page writes it; `--root` overrides it. |
+| `max_depth` | integer ≥ 1 | `2` | How deep to look for `.git`. `1` = direct children, `2` = grandchildren too. |
+| `ignore` | list of strings | `[]` | `fnmatch` globs. A directory is skipped when its relative label (`LEAP 71/PicoGK`) **or** basename (`PicoGK`) matches. |
+| `fetch_timeout_s` | number ≥ 0 | `300` | Seconds before a `git fetch` is abandoned. |
+| `command_timeout_s` | number ≥ 0 | `120` | Seconds before any other git command is abandoned. |
+| `delay_between_repos_s` | number ≥ 0 | `0.5` | Pause between consecutive fetches. |
+| `update_submodules` | boolean | `true` | Run `git submodule update --init --recursive` after a successful update. |
+| `require_git_lfs_for_lfs_repos` | boolean | `true` | Skip repos whose tracked `.gitattributes` uses `filter=lfs` when Git LFS is not installed or not enabled (`git lfs install`). |
+| `log_dir` | string | `"logs"` | Where reports are written. Relative paths resolve against the project root. |
+
+Unknown keys are reported on stderr and ignored, so a newer config does not break
+an older checkout.
+
+## Environment variables
+
+| Variable | Effect |
+|---|---|
+| `REPOPULL_HOME` | Project root. Set by `bin/repopull`; override to run from another location. |
+| `REPOPULL_CONFIG` | Config file path, between `--config` and `REPOPULL_HOME/config.toml`. |
+| `NO_COLOR` | Disable ANSI colour when set to any value. |
+| `GIT_TERMINAL_PROMPT` | Forced to `0` for every git call; an interactive credential prompt cannot hang a run. |
+| `GIT_ASKPASS` | Forced to `/bin/true` for every git call. |
+
+## Command line
+
+```
+repopull [global options] [command] [command options]
+```
+
+Global options may appear before or after the command:
+
+| Option | Meaning |
+|---|---|
+| `--root PATH` | Override the watched root. |
+| `--config PATH` | Use this config file. |
+| `--no-color` | Disable colour. |
+| `--json` | Emit JSON instead of a table (status and sync). |
+| `--verbose` | Print per-repo progress to stderr. |
+
+Commands:
+
+| Command | Behaviour |
+|---|---|
+| *(none)* | Interactive menu. Holds the run lock. |
+| `list` | Print discovered labels, no network. |
+| `where` | Print the config file, resolved root, its source, whether it exists, and the repo count. |
+| `status` | Fetch, then report what a sync would do. Changes no working tree. |
+| `sync` | Fetch, then fast-forward every clean, behind repo. |
+| `sync --behind` | Sync only repositories the last report found behind; up-to-date ones are not rechecked. |
+| `sync --force` | Fetch, then hard-reset selected repos to their upstream. |
+| `report` | Print `logs/latest.log`. |
+| `version` | Print the version. |
+
+`status` and `sync` accept repeatable `--only GLOB`, matched against the relative
+label and the basename:
+
+```bash
+./bin/repopull status --only 'craft-*'
+./bin/repopull sync --only 'LEAP*'
+./bin/repopull sync --only AppGlider --only fieldcraft
+```
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | No errors. Skips are fine. |
+| `1` | At least one repository ended in `error`. |
+| `2` | Fatal: bad config, missing root, no repos, or the lock is held. |
+
+## Examples
+
+```toml
+# Skip a corpus you never read.
+ignore = ["photocraft-corpus"]
+
+# Be extra gentle on a shared connection.
+delay_between_repos_s = 2.0
+fetch_timeout_s = 600
+
+# Keep submodules frozen.
+update_submodules = false
+```
+
+```bash
+# Machine-readable summary for a timer or notification.
+./bin/repopull --json sync | jq '.totals'
+
+# Inspect a single repo without touching anything.
+./bin/repopull status --only egui
+```
+For the full documentation index, see [README.md](../README.md#documentation-index).

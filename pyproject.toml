@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "repopull"
+version = "0.2.5"
+description = "Keep local mirrors of watched third-party repositories current with their remotes."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+repopull = "repopull.cli:main"
+repopull-gui = "repopull.gui.app:main"
+
+[project.optional-dependencies]
+gui = ["PySide6-Essentials>=6.8,<7"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"repopull.gui" = ["assets/*.png"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src/repopull"]
+mypy_path = "src"
+warn_unreachable = true
+
+# PySide6 ships .pyi files without a py.typed marker, so mypy treats the
+# bindings as untyped. The GUI is still annotated; these two leniencies keep
+# Qt's Any-typed base classes from failing the strict run.
+[[tool.mypy.overrides]]
+module = ["PySide6", "PySide6.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["repopull.gui.*"]
+disallow_subclassing_any = false

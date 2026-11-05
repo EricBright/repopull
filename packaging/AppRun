@@ -1,0 +1,28 @@
+#!/bin/sh
+# AppRun for the repopull AppImage.
+#
+# The image is read-only, so config.toml and logs live in a writable folder
+# outside it. Set REPOPULL_HOME to choose another place.
+set -eu
+
+APPDIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+export APPDIR
+
+unset PYTHONHOME PYTHONPATH QT_PLUGIN_PATH QT_QPA_PLATFORM_PLUGIN_PATH
+export LD_LIBRARY_PATH="$APPDIR/usr/lib"
+export QT_QPA_PLATFORM_PLUGIN_PATH="$APPDIR/opt/python3.13/lib/python3.13/site-packages/PySide6/Qt/plugins"
+export SSL_CERT_FILE="${SSL_CERT_FILE:-$APPDIR/opt/python3.13/lib/python3.13/site-packages/certifi/cacert.pem}"
+
+: "${XDG_CONFIG_HOME:=$HOME/.config}"
+REPOPULL_HOME="${REPOPULL_HOME:-$XDG_CONFIG_HOME/repopull}"
+export REPOPULL_HOME
+mkdir -p "$REPOPULL_HOME"
+if [ ! -f "$REPOPULL_HOME/config.toml" ]; then
+  cp "$APPDIR/usr/share/repopull/config.toml" "$REPOPULL_HOME/config.toml"
+fi
+
+if [ "${1:-}" = "--cli" ]; then
+  shift
+  exec "$APPDIR/opt/python3.13/bin/python3.13" -I -m repopull "$@"
+fi
+exec "$APPDIR/opt/python3.13/bin/python3.13" -I -m repopull.gui "$@"

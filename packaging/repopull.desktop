@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=repopull
+Comment=Keep local copies of watched repositories current
+Exec=repopull
+Icon=repopull
+Terminal=false
+Categories=Development;
