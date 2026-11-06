@@ -232,6 +232,9 @@ make bump        # increment the patch version
 make release     # check, bump the patch, build the AppImage
 ```
 
+CI runs `make check` on every push and pull request; see
+[.github/workflows/ci.yml](.github/workflows/ci.yml).
+
 The version lives in `pyproject.toml` and `src/repopull/__init__.py`. `make bump`
 defaults to a patch bump; use `make bump PART=minor` or `PART=major` for a larger
 step. `make release` runs the checks, bumps the patch, and rebuilds. See
