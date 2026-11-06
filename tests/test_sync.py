@@ -13,7 +13,14 @@ import support
 from repopull import git
 from repopull.config import Config
 from repopull.models import Outcome, RepoRef, RepoState, Row
-from repopull.sync import classify, inspect_repo, status_report, sync_report
+from repopull.sync import (
+    _run,
+    _within_root,
+    classify,
+    inspect_repo,
+    status_report,
+    sync_report,
+)
 
 
 def _config(base: Path) -> Config:
@@ -159,6 +166,128 @@ class ClassifyTests(unittest.TestCase):
         self.assertIs(verdict.outcome, Outcome.SKIPPED)
         self.assertIn("upstream", verdict.detail)
         self.assertEqual(verdict.commits, 0)
+
+
+class ContainmentTests(unittest.TestCase):
+    def test_path_inside_root_is_allowed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            root = base / "watched"
+            repo = root / "repo"
+            repo.mkdir(parents=True)
+
+            self.assertTrue(_within_root(repo, root))
+
+    def test_path_outside_root_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            root = base / "watched"
+            root.mkdir()
+            outside = base / "outside"
+            outside.mkdir()
+
+            self.assertFalse(_within_root(outside, root))
+
+
+class NetworkFailFastTests(unittest.TestCase):
+    def test_one_network_failure_does_not_stop_the_sweep(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            refs = [
+                RepoRef(base / name, name) for name in ("alpha", "beta", "gamma")
+            ]
+            states = [_state(ref=ref) for ref in refs]
+            failure = git.GitResult(
+                args=("git", "fetch"),
+                returncode=128,
+                stdout="",
+                stderr="fatal: unable to access: Could not resolve host: example",
+                timeout_s=30,
+            )
+            success = git.GitResult(
+                args=("git", "fetch"),
+                returncode=0,
+                stdout="",
+                stderr="",
+                timeout_s=30,
+            )
+
+            with (
+                patch("repopull.sync._collect", return_value=states),
+                patch(
+                    "repopull.sync.git.git_lfs_available", return_value=True
+                ),
+                patch(
+                    "repopull.sync.git.fetch",
+                    side_effect=[failure, success, success],
+                ) as fetch,
+                patch(
+                    "repopull.sync.inspect_repo",
+                    side_effect=lambda ref, timeout: _state(ref=ref),
+                ),
+            ):
+                rows, network_error = _run(
+                    refs,
+                    _config(base),
+                    force=False,
+                    preview=True,
+                    progress=None,
+                    on_row=None,
+                    cancel=None,
+                )
+
+            self.assertFalse(network_error)
+            self.assertIs(rows[0].outcome, Outcome.ERROR)
+            self.assertIs(rows[1].outcome, Outcome.UP_TO_DATE)
+            self.assertIs(rows[2].outcome, Outcome.UP_TO_DATE)
+            self.assertEqual(fetch.call_count, 3)
+
+    def test_two_network_failures_skip_the_rest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            refs = [
+                RepoRef(base / name, name) for name in ("alpha", "beta", "gamma")
+            ]
+            states = [_state(ref=ref) for ref in refs]
+            failure = git.GitResult(
+                args=("git", "fetch"),
+                returncode=128,
+                stdout="",
+                stderr=(
+                    "fatal: unable to access: Could not resolve host: example"
+                ),
+                timeout_s=30,
+            )
+
+            with (
+                patch("repopull.sync._collect", return_value=states),
+                patch(
+                    "repopull.sync.git.git_lfs_available", return_value=True
+                ),
+                patch(
+                    "repopull.sync.git.fetch", return_value=failure
+                ) as fetch,
+            ):
+                rows, network_error = _run(
+                    refs,
+                    _config(base),
+                    force=False,
+                    preview=True,
+                    progress=None,
+                    on_row=None,
+                    cancel=None,
+                )
+
+            self.assertTrue(network_error)
+            self.assertEqual(len(rows), 3)
+            self.assertIs(rows[0].outcome, Outcome.ERROR)
+            self.assertIn("fetch failed", rows[0].detail)
+            self.assertIs(rows[1].outcome, Outcome.ERROR)
+            self.assertEqual(rows[2].detail, "not attempted: network unavailable")
+            self.assertEqual(
+                [row.label for row in rows], ["alpha", "beta", "gamma"]
+            )
+            self.assertEqual(fetch.call_count, 2)
 
 
 class SyncIntegrationTests(unittest.TestCase):

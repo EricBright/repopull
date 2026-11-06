@@ -215,6 +215,33 @@ def load_config(
         raise ConfigError(f"invalid configuration in {path}: {exc}") from exc
 
 
+def _write_config_atomic(path: Path, text: str) -> None:
+    """Write a config file through a flushed, fsynced temporary file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    try:
+        with temporary.open("w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        temporary.replace(path)
+    finally:
+        try:
+            temporary.unlink()
+        except OSError:
+            pass
+    try:
+        directory = os.open(path.parent, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(directory)
+    except OSError:
+        pass
+    finally:
+        os.close(directory)
+
+
 def save_config(config: Config, path: Path) -> None:
     """Write the known keys to `path` atomically, with a short header.
 
@@ -248,10 +275,7 @@ def save_config(config: Config, path: Path) -> None:
             "",
         ]
     )
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text("\n".join(lines), encoding="utf-8")
-    temporary.replace(path)
+    _write_config_atomic(path, "\n".join(lines))
 
 
 def save_behavior_settings(
@@ -284,7 +308,4 @@ def save_behavior_settings(
         if key not in found:
             lines.append(f"{key} = {value}")
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    temporary.replace(path)
+    _write_config_atomic(path, "\n".join(lines) + "\n")

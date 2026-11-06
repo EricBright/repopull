@@ -78,6 +78,7 @@ class Report:
     elapsed_s: float
     rows: tuple[Row, ...]
     log_path: Path | None = None
+    network_error: bool = False
 
     def count(self, outcome: Outcome) -> int:
         """Number of rows with `outcome`."""

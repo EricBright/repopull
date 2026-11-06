@@ -133,6 +133,9 @@ class MainWindow(QMainWindow):
         self._auto_run = False
         self._auto_paused = False
         self._auto_failures = 0
+        self._network_offline = bool(
+            self.report is not None and self.report.network_error
+        )
         self._last_network_finished: float | None = None
         self.current_label: str | None = None
 
@@ -1170,7 +1173,7 @@ class MainWindow(QMainWindow):
         if self.task is not None:
             self.task.cancel.set()
             self.cancel_button.setEnabled(False)
-            self._flash("Stopping after the current repository…")
+            self._flash("Stopping the current git command…")
             return
         self._quit_application()
 
@@ -1285,8 +1288,12 @@ class MainWindow(QMainWindow):
         base = next_delay(
             self.config.auto_refresh_s,
             self._auto_failures,
+            network=self._network_offline,
         )
-        delay = max(base, cooldown) + self._jitter_seconds()
+        # A network retry is intentionally shorter than the normal cooldown;
+        # the network ladder already prevents a tight retry loop.
+        delay = (base if self._network_offline else max(base, cooldown))
+        delay += self._jitter_seconds()
         self.auto_timer.start(int(delay * 1000))
 
     def _auto_refresh_due(self) -> None:
@@ -1302,17 +1309,18 @@ class MainWindow(QMainWindow):
         if self.task is not None:
             self.auto_timer.start(60_000)
             return
-        now = time.monotonic()
-        remaining = cooldown_remaining(
-            self._last_network_finished,
-            now,
-            self.config.auto_refresh_s,
-        )
-        if remaining > 0:
-            self.auto_timer.start(
-                int((remaining + self._jitter_seconds()) * 1000)
+        if not self._network_offline:
+            now = time.monotonic()
+            remaining = cooldown_remaining(
+                self._last_network_finished,
+                now,
+                self.config.auto_refresh_s,
             )
-            return
+            if remaining > 0:
+                self.auto_timer.start(
+                    int((remaining + self._jitter_seconds()) * 1000)
+                )
+                return
         if not self.refs:
             self._schedule_auto_refresh()
             return
@@ -1369,7 +1377,10 @@ class MainWindow(QMainWindow):
         else:
             text = f"repopull — {self._summary(self.report)}"
         if self.config.auto_refresh_s > 0:
-            text += "\nAutomatic refresh on"
+            if self._network_offline:
+                text += "\nNetwork unavailable; retrying"
+            else:
+                text += "\nAutomatic refresh on"
         self.tray.setToolTip(text)
 
     def _start_run(
@@ -1491,6 +1502,7 @@ class MainWindow(QMainWindow):
         auto = self._auto_run
         self._auto_run = False
         self._last_network_finished = time.monotonic()
+        self._network_offline = report.network_error
         if auto:
             self._auto_failures = (
                 min(self._auto_failures + 1, 10) if report.has_errors else 0
@@ -1504,7 +1516,10 @@ class MainWindow(QMainWindow):
         self._set_busy(False)
         self._render_library()
         self._update_status_block()
-        self._flash(self._summary(report))
+        message = self._summary(report)
+        if report.network_error:
+            message += " · network unavailable"
+        self._flash(message)
         self._update_tray_tooltip()
         self._schedule_auto_refresh()
         self._maybe_quit_after_task()
@@ -1513,6 +1528,7 @@ class MainWindow(QMainWindow):
         self._auto_run = False
         self._last_network_finished = time.monotonic()
         self._auto_failures = 0
+        self._network_offline = False
         if isinstance(report, Report):
             self.report = report
             for row in report.rows:
@@ -1530,6 +1546,7 @@ class MainWindow(QMainWindow):
         auto = self._auto_run
         self._auto_run = False
         self._last_network_finished = time.monotonic()
+        self._network_offline = False
         self.task = None
         self._set_busy(False)
         self._flash("Run failed")

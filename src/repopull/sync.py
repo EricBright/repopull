@@ -7,6 +7,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from threading import Event
 
 from repopull import git
@@ -21,6 +22,7 @@ RowCallback = Callable[[Row], None]
 """Called with each row as soon as that repository has been decided."""
 
 _CANCELLED = "cancelled"
+_NETWORK_FAILURE_LIMIT = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,35 +160,62 @@ def _row(state: RepoState, verdict: Verdict) -> Row:
     )
 
 
+def _within_root(path: Path, root: Path) -> bool:
+    """True when `path` resolves inside `root`, following symlinks."""
+    try:
+        resolved = path.resolve(strict=True)
+        root_resolved = root.resolve(strict=True)
+    except OSError:
+        return False
+    return resolved == root_resolved or root_resolved in resolved.parents
+
+
 def _apply(
     state: RepoState,
     verdict: Verdict,
     config: Config,
     *,
     force: bool,
+    cancel: Event | None = None,
 ) -> Verdict:
     """Run the update a `UPDATED` verdict calls for, or report why it failed."""
+    if config.root is not None and not _within_root(
+        state.ref.path, config.root
+    ):
+        return Verdict(Outcome.ERROR, "refusing path outside watched root")
     upstream = state.upstream
     if upstream is None:  # classify guarantees this cannot happen
         return Verdict(Outcome.ERROR, "no upstream branch")
 
     if force:
         operation = git.hard_reset(
-            state.ref.path, upstream, timeout=config.command_timeout_s
+            state.ref.path,
+            upstream,
+            timeout=config.command_timeout_s,
+            cancel=cancel,
         )
     else:
         operation = git.fast_forward(
-            state.ref.path, upstream, timeout=config.command_timeout_s
+            state.ref.path,
+            upstream,
+            timeout=config.command_timeout_s,
+            cancel=cancel,
         )
+    if operation.cancelled:
+        return Verdict(Outcome.SKIPPED, _CANCELLED)
     if not operation.ok:
         return Verdict(Outcome.ERROR, operation.summary())
 
     detail = verdict.detail
     if state.has_submodules and config.update_submodules:
         submodules = git.update_submodules(
-            state.ref.path, timeout=config.command_timeout_s
+            state.ref.path,
+            timeout=config.command_timeout_s,
+            cancel=cancel,
         )
-        if not submodules.ok:
+        if submodules.cancelled:
+            detail = "submodule update cancelled"
+        elif not submodules.ok:
             detail = f"submodule update failed: {submodules.summary()}"
     return Verdict(Outcome.UPDATED, detail, commits=verdict.commits)
 
@@ -200,15 +229,20 @@ def _run(
     progress: ProgressFn | None,
     on_row: RowCallback | None,
     cancel: Event | None,
-) -> list[Row]:
+) -> tuple[list[Row], bool]:
     """Process one repository at a time, emitting each row as it is decided.
 
     Fetching and classifying per repository (rather than fetching everything
-    first) is what lets a caller show progress repository by repository.
+    first) is what lets a caller show progress repository by repository. The
+    second consecutive network-level failure stops the sweep: a single bad
+    remote is reported but does not starve the rest. Remaining repositories are
+    marked not attempted instead of each paying its own timeout.
     """
     states = _collect(refs, config)
     lfs_ok = git.git_lfs_available()
     rows: list[Row] = []
+    network_error = False
+    network_failures = 0
     total = len(states)
 
     for index, state in enumerate(states, start=1):
@@ -218,13 +252,51 @@ def _run(
             progress(index, total, state.ref.label)
 
         current = state
+        if state.error is not None:
+            network_failures = 0
         if state.error is None:
-            fetched = git.fetch(state.ref.path, timeout=config.fetch_timeout_s)
-            if not fetched.ok:
+            fetched = git.fetch(
+                state.ref.path,
+                timeout=config.fetch_timeout_s,
+                cancel=cancel,
+            )
+            if fetched.cancelled:
+                current = dataclasses.replace(state, error=_CANCELLED)
+            elif not fetched.ok:
                 current = dataclasses.replace(
                     state, error=f"fetch failed: {fetched.summary()}"
                 )
+                if git.is_network_error(fetched):
+                    network_failures += 1
+                    if network_failures >= _NETWORK_FAILURE_LIMIT:
+                        network_error = True
+                        verdict = classify(
+                            current,
+                            force=force,
+                            lfs_ok=lfs_ok,
+                            require_lfs=config.require_git_lfs_for_lfs_repos,
+                            preview=preview,
+                        )
+                        row = _row(current, verdict)
+                        rows.append(row)
+                        if on_row is not None:
+                            on_row(row)
+                        for remaining in states[index:]:
+                            row = _row(
+                                remaining,
+                                Verdict(
+                                    Outcome.SKIPPED,
+                                    "not attempted: network unavailable",
+                                ),
+                            )
+                            rows.append(row)
+                            if on_row is not None:
+                                on_row(row)
+                        break
+                else:
+                    network_failures = 0
             else:
+                network_failures = 0
                 current = inspect_repo(
                     state.ref, timeout=config.command_timeout_s
                 )
@@ -237,7 +309,9 @@ def _run(
             preview=preview,
         )
         if not preview and verdict.outcome is Outcome.UPDATED:
-            verdict = _apply(current, verdict, config, force=force)
+            verdict = _apply(
+                current, verdict, config, force=force, cancel=cancel
+            )
 
         row = _row(current, verdict)
         rows.append(row)
@@ -257,7 +331,7 @@ def _run(
         if on_row is not None:
             on_row(row)
 
-    return rows
+    return rows, network_error
 
 
 def _collect(refs: list[RepoRef], config: Config) -> list[RepoState]:
@@ -277,7 +351,7 @@ def status_report(
     """Fetch and report what a sync *would* do, changing no working tree."""
     started_at = datetime.now()
     clock = time.monotonic()
-    rows = _run(
+    rows, network_error = _run(
         refs,
         config,
         force=False,
@@ -291,6 +365,7 @@ def status_report(
         started_at=started_at,
         elapsed_s=time.monotonic() - clock,
         rows=tuple(rows),
+        network_error=network_error,
     )
     return write_log(
         report, config.log_dir, retention_days=config.log_retention_days
@@ -309,7 +384,7 @@ def sync_report(
     """Fetch and update every repository that can be updated safely."""
     started_at = datetime.now()
     clock = time.monotonic()
-    rows = _run(
+    rows, network_error = _run(
         refs,
         config,
         force=force,
@@ -323,6 +398,7 @@ def sync_report(
         started_at=started_at,
         elapsed_s=time.monotonic() - clock,
         rows=tuple(rows),
+        network_error=network_error,
     )
     return write_log(
         report, config.log_dir, retention_days=config.log_retention_days

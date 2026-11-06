@@ -59,9 +59,16 @@ the library then fills. Nothing is hard-coded into the app.
   refresh is on, a wake from suspend is detected and the app waits 60 seconds for
   the desktop and network to settle before running one status check; missed
   intervals are not queued. If a run was in flight, that run finishes first.
+  Two consecutive network-level fetch failures stop that sweep and mark the
+  remaining repositories "not attempted"; automatic retries are 2, 5, 15, 30,
+  and 60 minutes, so a reconnect is noticed quickly without repeatedly timing
+  out every repository.
   With background mode on, the symbolic tray menu offers Open, Refresh status
-  now, Pause/Resume automatic refresh, and Quit. Quit waits for the current
-  repository and releases the locks. A second GUI launch refuses to start.
+  now, Pause/Resume automatic refresh, and Quit. Quit cancels the current git
+  command, waits for the worker to unwind, and releases the locks. A cancelled
+  git command can leave that repository with a lock or partial checkout; the
+  next run reports it rather than forcing a repair. A second GUI launch refuses
+  to start.
   The **Git LFS** row shows whether `git-lfs` is installed and enabled;
   **Help…** explains what LFS is and shows the install command for the detected
   distribution plus `git lfs install`. Nothing is installed or run automatically.
@@ -78,8 +85,9 @@ The window/taskbar icon and the sidebar mark are documented in
 
 The GUI calls the same `status_report` and `sync_report` functions as the CLI. It
 never pushes, commits, or cleans. A normal run skips dirty and diverged
-repositories; Force sync is the only destructive path and asks first. The GUI
-holds the same `logs/.lock` as the CLI, so two runs cannot overlap.
+repositories; Force sync is the only destructive path and asks first. Updates
+are refused if the repository path no longer resolves inside the watched root.
+The GUI holds the same `logs/.lock` as the CLI, so two runs cannot overlap.
 
 ## Limitations (prototype)
 

@@ -14,6 +14,8 @@ SUSPEND_DETECT_THRESHOLD_S = 5.0
 SUSPEND_POLL_INTERVAL_S = 30.0
 SUSPEND_RESUME_GRACE_S = 60.0
 
+NETWORK_RETRY_DELAYS_S = (120.0, 300.0, 900.0, 1_800.0, 3_600.0)
+
 
 def clamp_auto_refresh_s(seconds: int) -> int:
     """Clamp an automatic-refresh interval; 0 means off."""
@@ -47,13 +49,23 @@ def next_delay(
     failures: int,
     *,
     jitter_s: float = 0.0,
+    network: bool = False,
 ) -> float:
-    """Backoff interval plus bounded jitter after a completed auto run."""
-    if interval_s <= 0:
+    """Backoff interval plus bounded jitter after a completed auto run.
+
+    Network failures use their own short-first ladder: two minutes, then five,
+    fifteen, thirty, and one hour. This lets a reconnect resume quickly without
+    hammering a long outage every normal refresh interval.
+    """
+    if interval_s <= 0 and not network:
         return 0.0
-    exponent = min(max(failures, 0), 6)
-    cap = max(interval_s, AUTO_REFRESH_BACKOFF_CAP_S)
-    delay = min(interval_s * (2**exponent), cap)
+    if network:
+        index = min(max(failures - 1, 0), len(NETWORK_RETRY_DELAYS_S) - 1)
+        delay = NETWORK_RETRY_DELAYS_S[index]
+    else:
+        exponent = min(max(failures, 0), 6)
+        cap = max(interval_s, AUTO_REFRESH_BACKOFF_CAP_S)
+        delay = min(interval_s * (2**exponent), cap)
     jitter = min(max(jitter_s, 0.0), float(AUTO_REFRESH_JITTER_S))
     return float(delay + jitter)
 

@@ -300,8 +300,10 @@ never quits needs a reliable exit and a visible control.
 **Decision:** `background_mode = false` by default. The symbolic tray icon is
 created whenever the app runs and the tray is available; `background_mode`
 controls only whether closing hides to it. The tray has Open, Refresh status
-now, Pause/Resume automatic refresh, and Quit. Quit cancels the active run, waits for
-the current repository, releases the locks, and then exits. The GUI is
+now, Pause/Resume automatic refresh, and Quit. Quit cancels the active git
+command, waits for the worker to unwind, releases the locks, and then exits.
+A cancelled git command can leave the current repository locked or partially
+checked out; the next run reports it rather than forcing a repair. The GUI is
 single-instance. With background mode off, closing quits.
 
 **Consequences:** No surprise resident process on first run. Normal minimize
@@ -329,5 +331,40 @@ network that is still down.
 check lands about 60–90 s after wake (30 s poll plus 60 s grace), and it may still
 fail if the network is not back; the usual backoff applies. The trade-off is a
 short stale window instead of a burst of fetches.
+
+## 26. Network failures stop the sweep and use a short retry ladder
+
+**Context:** A long Wi-Fi drop or a blackholed connection can make every
+repository pay its own fetch timeout. Retrying only at the normal 15-minute (or
+longer) interval also leaves a restored connection idle for too long.
+
+**Decision:** Classify DNS, connection, proxy, reset, and timeout failures as
+network outages. Stop the sweep after two consecutive failures (one bad remote
+should not starve the rest); mark the remaining repositories "not attempted:
+network unavailable". Automatic retries use 2, 5, 15, 30, and 60 minutes, with
+jitter, and a successful run returns to the normal interval. Manual runs still work and reset the ladder. The fetch timeout still
+bounds a single attempt.
+
+**Consequences:** A long outage costs two failed fetches, not one timeout per
+repository, and a reconnect is normally picked up within two minutes. A very
+long outage settles at one attempt per hour. A single bad repository is
+recorded but does not stop the others; two in a row stop the sweep, and the
+next retry rechecks them. A manual run is always available. See [configuration.md](configuration.md#automatic-refresh).
+
+## 27. Git hooks and fsmonitor are disabled
+
+**Context:** A watched repository's local `.git` metadata is trusted by Git.
+Hooks and a configured `fsmonitor` can execute commands during fetch, merge, or
+status. A mirror should not run third-party hooks just to update a checkout.
+
+**Decision:** Every git call uses `-c core.hooksPath=/dev/null` and
+`-c core.fsmonitor=false`. Repo-locating and config-injection `GIT_*` variables
+are removed from the child environment.
+
+**Consequences:** Local hooks no longer fire during a repopull run, including
+hooks a user may have installed in a watched repo. LFS smudge filters and
+submodule commands still run; this is not a full sandbox. It closes the easiest
+local-code-execution path without changing the fetch/fast-forward contract. See
+[configuration.md](configuration.md#environment-variables).
 
 For the full documentation index, see [README.md](../README.md#documentation-index).

@@ -99,6 +99,26 @@ class ReportRoundTripTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             report_from_dict(data)
 
+    def test_network_error_round_trip_and_render(self) -> None:
+        report = Report(
+            mode="status",
+            started_at=datetime(2026, 11, 5, 16, 0, 0),
+            elapsed_s=1.0,
+            rows=(Row("alpha", "main", Outcome.ERROR, 0, "fetch failed"),),
+            network_error=True,
+        )
+
+        restored = report_from_dict(report_to_dict(report))
+
+        self.assertTrue(restored.network_error)
+        self.assertIn("network unavailable", render_report(report, color=False))
+
+    def test_old_json_without_network_flag_defaults_to_false(self) -> None:
+        data = report_to_dict(_report())
+        data.pop("network_error")
+
+        self.assertFalse(report_from_dict(data).network_error)
+
     def test_render_report_includes_rows_and_totals(self) -> None:
         text = render_report(_report(), color=False)
 

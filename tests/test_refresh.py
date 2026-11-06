@@ -8,6 +8,7 @@ from repopull.refresh import (
     AUTO_REFRESH_FLOOR_S,
     AUTO_REFRESH_MAX_S,
     AUTO_REFRESH_RECOMMENDED_S,
+    NETWORK_RETRY_DELAYS_S,
     SUSPEND_DETECT_THRESHOLD_S,
     SUSPEND_RESUME_GRACE_S,
     SuspendDetector,
@@ -80,6 +81,20 @@ class DelayTests(unittest.TestCase):
 
     def test_off_returns_zero(self) -> None:
         self.assertEqual(next_delay(0, 0), 0.0)
+
+    def test_network_retry_starts_short_then_caps(self) -> None:
+        self.assertEqual(next_delay(900, 1, network=True), 120.0)
+        self.assertEqual(next_delay(900, 2, network=True), 300.0)
+        self.assertEqual(next_delay(900, 3, network=True), 900.0)
+        self.assertEqual(next_delay(900, 4, network=True), 1_800.0)
+        self.assertEqual(next_delay(900, 5, network=True), 3_600.0)
+        self.assertEqual(
+            next_delay(900, 99, network=True), NETWORK_RETRY_DELAYS_S[-1]
+        )
+
+    def test_network_retry_keeps_jitter_bounded(self) -> None:
+        self.assertEqual(next_delay(900, 1, network=True, jitter_s=10), 130.0)
+        self.assertEqual(next_delay(900, 1, network=True, jitter_s=100), 180.0)
 
 
 class SuspendDetectorTests(unittest.TestCase):

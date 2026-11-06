@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import fnmatch
 import os
+import shutil
 from collections.abc import Sequence
 from pathlib import Path
 
 from repopull.models import RepoRef
+
+MIN_FREE_BYTES = 64 * 1024 * 1024
 
 
 class DiscoveryError(RuntimeError):
@@ -38,6 +41,16 @@ def discover_repos(
         raise DiscoveryError(f"watched root does not exist: {root}")
     if not root.is_dir():
         raise DiscoveryError(f"watched root is not a directory: {root}")
+    if not os.access(root, os.W_OK | os.X_OK):
+        raise DiscoveryError(f"watched root is not writable: {root}")
+    try:
+        free = shutil.disk_usage(root).free
+    except OSError as exc:
+        raise DiscoveryError(f"cannot read watched root usage: {exc}") from exc
+    if free < MIN_FREE_BYTES:
+        raise DiscoveryError(
+            f"watched root has less than {MIN_FREE_BYTES // (1024 * 1024)} MiB free"
+        )
 
     root = root.resolve()
     found: list[RepoRef] = []

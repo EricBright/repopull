@@ -5,6 +5,17 @@
 - Detect resume from suspend with `CLOCK_BOOTTIME` versus `CLOCK_MONOTONIC`;
   wait 60 seconds for the desktop and network to settle, then run one status
   check instead of queueing missed intervals.
+- Treat DNS, connection, proxy, reset, and timeout failures as network outages:
+  stop the sweep after two consecutive failures, mark the rest not attempted,
+  and retry after 2, 5, 15, 30, then 60 minutes.
+- Kill the git process group when a command times out or is cancelled, and scrub
+  repo-locating `GIT_*` variables before every call. Hooks and `core.fsmonitor`
+  are disabled for these calls. A cancelled command may leave a repo locked or
+  partially checked out; the next run reports it.
+- Redact URL credentials from git errors, fsync config writes, and reject a
+  watched root that is not writable or has less than 64 MiB free.
+- Refuse an update when the repository path no longer resolves inside the
+  watched root.
 - Corrected the README and GUI limitations, and added an authorship note.
 
 ## 0.4.3 — 2026-11-05

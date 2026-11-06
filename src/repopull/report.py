@@ -64,6 +64,8 @@ def render_report(report: Report, *, color: bool) -> str:
         f"{name:<{widths[index]}}" for index, name in enumerate(_HEADERS)
     )
     lines.append(header)
+    if report.network_error:
+        lines.append("network unavailable; remaining repositories were not attempted")
 
     for row, cell in zip(report.rows, cells, strict=True):
         label, branch, _status, commits, detail = cell
@@ -212,6 +214,7 @@ def report_to_dict(report: Report) -> dict[str, Any]:
         "mode": report.mode,
         "started_at": report.started_at.isoformat(),
         "elapsed_s": round(report.elapsed_s, 3),
+        "network_error": report.network_error,
         "log_path": str(report.log_path) if report.log_path else None,
         "totals": {outcome.value: count for outcome, count in report.totals.items()},
         "rows": [
@@ -245,12 +248,16 @@ def report_from_dict(data: dict[str, Any]) -> Report:
             for item in data["rows"]
         )
         log_path = data.get("log_path")
+        network_error = data.get("network_error", False)
+        if not isinstance(network_error, bool):
+            raise ValueError("network_error must be true or false")
         return Report(
             mode=str(data["mode"]),
             started_at=datetime.fromisoformat(str(data["started_at"])),
             elapsed_s=float(data["elapsed_s"]),
             rows=rows,
             log_path=Path(str(log_path)) if log_path else None,
+            network_error=network_error,
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise ValueError(f"invalid report data: {exc}") from exc

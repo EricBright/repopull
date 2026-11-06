@@ -5,6 +5,8 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from repopull.discovery import DiscoveryError, discover_repos
 
@@ -55,6 +57,27 @@ class DiscoveryTests(unittest.TestCase):
     def test_missing_root_raises(self) -> None:
         with self.assertRaisesRegex(DiscoveryError, "does not exist"):
             discover_repos(Path("/definitely/not/here"))
+
+    def test_read_only_root_raises(self) -> None:
+        root = self._root()
+
+        with (
+            patch("repopull.discovery.os.access", return_value=False),
+            self.assertRaisesRegex(DiscoveryError, "not writable"),
+        ):
+            discover_repos(root)
+
+    def test_low_free_space_raises(self) -> None:
+        root = self._root()
+
+        with (
+            patch(
+                "repopull.discovery.shutil.disk_usage",
+                return_value=SimpleNamespace(free=0),
+            ),
+            self.assertRaisesRegex(DiscoveryError, "less than"),
+        ):
+            discover_repos(root)
 
     def test_results_are_sorted(self) -> None:
         root = self._root()

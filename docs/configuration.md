@@ -19,7 +19,8 @@ and `sync` explain how to set one (GUI Settings, `root` in the file, or
 
 The resolved `root` is the single link to the watched data. `repopull where`
 prints it, where it came from (`config.toml key "root"`, `--root`, or
-`not configured`), whether it exists, and how many repos it contains.
+`not configured`), whether it exists and is writable, and how many repos it
+contains. Discovery also requires at least 64 MiB free on that filesystem.
 
 Command-line flags override the file. `--root` overrides `root`.
 
@@ -30,7 +31,7 @@ Command-line flags override the file. `--root` overrides `root`.
 | `root` | string | **not configured** | Directory holding the watched repositories. The GUI's Settings page writes it; `--root` overrides it. |
 | `max_depth` | integer ≥ 1 | `2` | How deep to look for `.git`. `1` = direct children, `2` = grandchildren too. |
 | `ignore` | list of strings | `[]` | `fnmatch` globs. A directory is skipped when its relative label (`LEAP 71/PicoGK`) **or** basename (`PicoGK`) matches. |
-| `fetch_timeout_s` | number ≥ 0 | `300` | Seconds before a `git fetch` is abandoned. |
+| `fetch_timeout_s` | number ≥ 0 | `300` | Seconds before a `git fetch` is abandoned. Network-level failures are collected and can stop the sweep. |
 | `command_timeout_s` | number ≥ 0 | `120` | Seconds before any other git command is abandoned. |
 | `delay_between_repos_s` | number ≥ 0 | `0.5` | Pause between consecutive fetches. |
 | `update_submodules` | boolean | `true` | Run `git submodule update --init --recursive` after a successful update. |
@@ -59,6 +60,14 @@ active run is never overlapped, and failures double the next delay up to one
 hour. The GUI edits minutes, warns below 15 minutes, and uses a hard 5-minute
 floor.
 
+A DNS, connection, proxy, reset, or timeout failure is treated as a network
+outage. Two consecutive such failures stop the sweep; the remaining
+repositories are reported as not attempted instead of each waiting for its own
+timeout. One failure is recorded but does not stop the other repositories. Automatic
+retries then use a short ladder: 2, 5, 15, 30, and 60 minutes. A successful run
+returns to the normal interval, so a reconnect is picked up within two minutes
+without hammering a long outage.
+
 ## Environment variables
 
 | Variable | Effect |
@@ -68,6 +77,12 @@ floor.
 | `NO_COLOR` | Disable ANSI colour when set to any value. |
 | `GIT_TERMINAL_PROMPT` | Forced to `0` for every git call; an interactive credential prompt cannot hang a run. |
 | `GIT_ASKPASS` | Forced to `/bin/true` for every git call. |
+
+Repo-locating variables (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`, and the
+object/config equivalents) are removed before every git call, so launching
+repopull from a Git hook or IDE cannot redirect it to another repository. Git
+hooks and `core.fsmonitor` are disabled for these calls; URL userinfo in git
+errors is replaced with `***` before it reaches a log.
 
 ## Command line
 
@@ -91,7 +106,7 @@ Commands:
 |---|---|
 | *(none)* | Interactive menu. Holds the run lock. |
 | `list` | Print discovered labels, no network. |
-| `where` | Print the config file, resolved root, its source, whether it exists, and the repo count. |
+| `where` | Print the config file, resolved root, its source, whether it exists and is writable, and the repo count. |
 | `status` | Fetch, then report what a sync would do. Changes no working tree. |
 | `sync` | Fetch, then fast-forward every clean, behind repo. |
 | `sync --behind` | Sync only repositories the last report found behind; up-to-date ones are not rechecked. |

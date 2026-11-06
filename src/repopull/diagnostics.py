@@ -7,6 +7,7 @@ missing or empty root actionable instead of a bare stack-free error.
 
 from __future__ import annotations
 
+import os
 import shutil
 import sys
 from dataclasses import dataclass
@@ -31,6 +32,8 @@ def _root_state(config: Config) -> str:
         return "MISSING"
     if not config.root.is_dir():
         return "not a directory"
+    if not os.access(config.root, os.W_OK | os.X_OK):
+        return "not writable"
     try:
         refs = discover_repos(
             config.root, max_depth=config.max_depth, ignore=config.ignore
@@ -81,6 +84,17 @@ def describe_paths(config: Config) -> str:
             [
                 "",
                 "The root is missing: mount the disk, fix the path, or pass --root.",
+            ]
+        )
+    elif (
+        config.root is not None
+        and config.root.is_dir()
+        and not os.access(config.root, os.W_OK | os.X_OK)
+    ):
+        lines.extend(
+            [
+                "",
+                "The root is not writable: remount it read-write or fix its permissions.",
             ]
         )
     lines.extend(

@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import os
 import tempfile
+import time
 import unittest
 from datetime import datetime
 from pathlib import Path
@@ -356,6 +357,54 @@ if HAVE_PYSIDE:
                 reloaded = load_config(config_path=config_path)
                 self.assertTrue(reloaded.background_mode)
                 self.assertTrue(window.config.background_mode)
+                window.request_quit()
+
+        def test_network_retry_bypasses_normal_cooldown(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                window = MainWindow(self._config(base, self._tree(base)))
+                window.config = dataclasses.replace(
+                    window.config, auto_refresh_s=900
+                )
+                window._network_offline = True
+                window._last_network_finished = time.monotonic()
+
+                with patch.object(window, "_start_run") as start:
+                    window._auto_refresh_due()
+
+                start.assert_called_once()
+                window.request_quit()
+
+        def test_network_failure_schedules_short_retry(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                window = MainWindow(self._config(base, self._tree(base)))
+                window.config = dataclasses.replace(
+                    window.config, auto_refresh_s=900
+                )
+                window._auto_run = True
+
+                with patch.object(window, "_jitter_seconds", return_value=0.0):
+                    window._on_finished(
+                        Report(
+                            mode="status",
+                            started_at=datetime(2026, 11, 6, 12, 0, 0),
+                            elapsed_s=1.0,
+                            rows=(
+                                Row(
+                                    "alpha",
+                                    "main",
+                                    Outcome.ERROR,
+                                    0,
+                                    "fetch failed: Could not resolve host",
+                                ),
+                            ),
+                            network_error=True,
+                        )
+                    )
+
+                self.assertTrue(window._network_offline)
+                self.assertEqual(window.auto_timer.interval(), 120_000)
                 window.request_quit()
 
         def test_resume_defers_auto_refresh_by_grace(self) -> None:
