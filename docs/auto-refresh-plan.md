@@ -1,6 +1,6 @@
 # Auto-refresh and system tray plan (0.4.0)
 
-**Status:** implemented in 0.4.0; kept as the plan record.
+**Status:** implemented in 0.4.0; 0.4.1 follow-up for tray visibility and Wayland; kept as the plan record.
 **Audience:** maintainers.
 **Purpose:** durable working spec for the resident auto-refresh and tray work.
 When the feature ships, fold the lasting facts into
@@ -123,6 +123,8 @@ Tray:
 - Phase 4 next.
 - 2026-11-05: Phase 4 complete — 114 tests, CI green, AppImage 0.4.0,
   private release published.
+- 2026-11-05: 0.4.1 follow-up — Background & refresh moved up, tray icon
+  visible while running, Wayland fallback for KDE.
 
 ## Phases
 

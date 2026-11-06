@@ -449,6 +449,65 @@ class MainWindow(QMainWindow):
         watch_form.addRow("Ignore", self.settings_ignore)
         content_layout.addWidget(watching)
 
+        background = QGroupBox("Background & refresh")
+        background_form = QFormLayout(background)
+        background_form.setContentsMargins(16, 18, 16, 14)
+        background_form.setSpacing(10)
+
+        self.settings_background = QCheckBox(
+            "Keep running in the system tray when the window is closed"
+        )
+        self.settings_background.setEnabled(self._tray_available)
+        if not self._tray_available:
+            self.settings_background.setToolTip(
+                "The system tray is not available in this session."
+            )
+        background_form.addRow(self.settings_background)
+
+        self.settings_tray_status = QLabel(
+            "System tray is available. The tray icon is visible while repopull "
+            "runs; closing keeps it there only when the box above is checked."
+            if self._tray_available
+            else "System tray is not available in this session; background mode "
+            "is disabled and closing quits."
+        )
+        self.settings_tray_status.setObjectName("Muted")
+        self.settings_tray_status.setWordWrap(True)
+        background_form.addRow(self.settings_tray_status)
+
+        self.settings_auto = QCheckBox("Refresh status automatically")
+        background_form.addRow(self.settings_auto)
+
+        self.settings_auto_minutes = QSpinBox()
+        self.settings_auto_minutes.setRange(5, 1440)
+        self.settings_auto_minutes.setSuffix(" minutes")
+        self.settings_auto_minutes.setValue(15)
+        self.settings_auto_minutes.setEnabled(False)
+        background_form.addRow("Every", self.settings_auto_minutes)
+
+        self.settings_auto_warning = QLabel(
+            "Frequent fetches increase load on remote servers; "
+            "15 minutes or longer is recommended."
+        )
+        self.settings_auto_warning.setWordWrap(True)
+        self.settings_auto_warning.setStyleSheet("color: #d29922;")
+        self.settings_auto_warning.setVisible(False)
+        background_form.addRow(self.settings_auto_warning)
+
+        auto_note = QLabel(
+            "Status only — automatic refresh never syncs. "
+            "Closing quits unless the tray setting is enabled."
+        )
+        auto_note.setWordWrap(True)
+        auto_note.setObjectName("Muted")
+        background_form.addRow(auto_note)
+
+        self.settings_auto.toggled.connect(self._on_auto_toggled)
+        self.settings_auto_minutes.valueChanged.connect(
+            self._on_auto_minutes_changed
+        )
+        content_layout.addWidget(background)
+
         network = QGroupBox("Network")
         network_form = QFormLayout(network)
         network_form.setContentsMargins(16, 18, 16, 14)
@@ -504,53 +563,6 @@ class MainWindow(QMainWindow):
 
         content_layout.addWidget(updates)
 
-        background = QGroupBox("Background & refresh")
-        background_form = QFormLayout(background)
-        background_form.setContentsMargins(16, 18, 16, 14)
-        background_form.setSpacing(10)
-
-        self.settings_background = QCheckBox(
-            "Keep running in the system tray when the window is closed"
-        )
-        self.settings_background.setEnabled(self._tray_available)
-        if not self._tray_available:
-            self.settings_background.setToolTip(
-                "The system tray is not available in this session."
-            )
-        background_form.addRow(self.settings_background)
-
-        self.settings_auto = QCheckBox("Refresh status automatically")
-        background_form.addRow(self.settings_auto)
-
-        self.settings_auto_minutes = QSpinBox()
-        self.settings_auto_minutes.setRange(5, 1440)
-        self.settings_auto_minutes.setSuffix(" minutes")
-        self.settings_auto_minutes.setValue(15)
-        self.settings_auto_minutes.setEnabled(False)
-        background_form.addRow("Every", self.settings_auto_minutes)
-
-        self.settings_auto_warning = QLabel(
-            "Frequent fetches increase load on remote servers; "
-            "15 minutes or longer is recommended."
-        )
-        self.settings_auto_warning.setWordWrap(True)
-        self.settings_auto_warning.setStyleSheet("color: #d29922;")
-        self.settings_auto_warning.setVisible(False)
-        background_form.addRow(self.settings_auto_warning)
-
-        auto_note = QLabel(
-            "Status only — automatic refresh never syncs. "
-            "Closing quits unless the tray setting is enabled."
-        )
-        auto_note.setWordWrap(True)
-        auto_note.setObjectName("Muted")
-        background_form.addRow(auto_note)
-
-        self.settings_auto.toggled.connect(self._on_auto_toggled)
-        self.settings_auto_minutes.valueChanged.connect(
-            self._on_auto_minutes_changed
-        )
-        content_layout.addWidget(background)
 
         storage = QGroupBox("Storage")
         storage_form = QFormLayout(storage)
@@ -1089,7 +1101,7 @@ class MainWindow(QMainWindow):
             self._quit_application()
 
     def _apply_background_mode(self) -> None:
-        if not self._tray_available or not self.config.background_mode:
+        if not self._tray_available:
             if self.tray is not None:
                 self.tray.hide()
             return

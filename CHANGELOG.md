@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.1 — 2026-11-05
+
+- Moved Background & refresh above Network and added a tray-availability
+  line, so close-to-tray is visible without deep scrolling.
+- The tray icon is now created whenever the app runs (when the tray is
+  available); background mode only controls whether closing hides to it.
+- Prefer Qt Wayland with an XCB fallback on Wayland sessions, so KDE
+  Plasma's Wayland tray can show the icon.
+
 ## 0.4.0 — 2026-11-05
 
 - Added opt-in resident mode: closing can hide to a symbolic system-tray

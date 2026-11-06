@@ -54,6 +54,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.smoke_test or args.screenshot is not None:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    elif sys.platform.startswith("linux") and os.environ.get("WAYLAND_DISPLAY"):
+        # Qt defaults to XCB on some images; XEmbed tray icons are not shown by
+        # KDE Plasma's Wayland tray. Prefer Wayland, then fall back to XCB.
+        os.environ.setdefault("QT_QPA_PLATFORM", "wayland;xcb")
 
     # Imported after QT_QPA_PLATFORM is set, so the offscreen platform is used.
     from PySide6.QtWidgets import QApplication

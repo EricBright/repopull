@@ -306,6 +306,18 @@ if HAVE_PYSIDE:
                 self.assertTrue(window.tray.icon().isMask())
                 window.request_quit()
 
+        def test_tray_is_visible_without_background_mode(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = self._tree(base)
+                window = MainWindow(self._config(base, root))
+                window._tray_available = True
+                window._apply_background_mode()
+
+                self.assertIsNotNone(window.tray)
+                self.assertFalse(window.config.background_mode)
+                window.request_quit()
+
         def test_close_to_tray_hides_instead_of_quitting(self) -> None:
             with tempfile.TemporaryDirectory() as tmp:
                 base = Path(tmp)

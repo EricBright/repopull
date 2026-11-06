@@ -297,9 +297,10 @@ the lock simply postpones the next auto attempt. See
 process that quits immediately on close cannot keep a schedule; a process that
 never quits needs a reliable exit and a visible control.
 
-**Decision:** `background_mode = false` by default. When enabled, closing hides
-to a symbolic system-tray icon; the tray has Open, Refresh status now,
-Pause/Resume automatic refresh, and Quit. Quit cancels the active run, waits for
+**Decision:** `background_mode = false` by default. The symbolic tray icon is
+created whenever the app runs and the tray is available; `background_mode`
+controls only whether closing hides to it. The tray has Open, Refresh status
+now, Pause/Resume automatic refresh, and Quit. Quit cancels the active run, waits for
 the current repository, releases the locks, and then exits. The GUI is
 single-instance. With background mode off, closing quits.
 

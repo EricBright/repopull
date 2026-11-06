@@ -44,12 +44,14 @@ the library then fills. Nothing is hard-coded into the app.
   tree, Git LFS, submodules, remote URL, and the last result.
 - **Force sync…** on the detail page resets one repository after a confirmation.
 - **Settings**: grouped into Watching (folder, depth, ignore globs), Network
-  (delay, timeouts), Updates (submodules, LFS), Background & refresh (tray,
-  automatic status refresh), and Storage (logs, retention). Saving writes
+  Background & refresh (tray, automatic status refresh), Network (delay,
+  timeouts), Updates (submodules, LFS), and Storage (logs, retention). Saving writes
   `config.toml`; **Reset to defaults** restores the shipped values first. The
   logs path is resolved at runtime from `$XDG_CONFIG_HOME` (or `~/.config`).
   **Keep run logs** sets `log_retention_days`; `0` keeps every run log.
-  **Keep running in the system tray** is close-to-tray; normal minimize stays in
+  **Keep running in the system tray** is close-to-tray; the tray icon is visible
+  whenever the app runs, and the checkbox controls whether closing hides to it.
+  Normal minimize stays in
   the taskbar. **Refresh status automatically** is status-only, off by default,
   has a 5-minute hard floor, and shows an orange warning below 15 minutes. A
   manual status or sync resets the next automatic run.

@@ -1,6 +1,6 @@
 # Packaging as an AppImage
 
-`make appimage` builds `dist/repopull-0.4.0-x86_64.AppImage`: a single file with
+`make appimage` builds `dist/repopull-0.4.1-x86_64.AppImage`: a single file with
 a bundled Python 3.13, PySide6 and `repopull`. It follows the same approach as
 AppGlider — `python-appimage` stages the AppDir, then a pinned `appimagetool`
 packs it.
@@ -25,16 +25,16 @@ stages the AppDir, replaces `AppRun`, packs the image, and runs two smoke tests
 (GUI offscreen and `--cli version`). Output:
 
 ```
-dist/repopull-0.4.0-x86_64.AppImage
+dist/repopull-0.4.1-x86_64.AppImage
 dist/SHA256SUMS.txt
 ```
 
 ## Run
 
 ```bash
-./dist/repopull-0.4.0-x86_64.AppImage                  # GUI
-./dist/repopull-0.4.0-x86_64.AppImage --cli status
-./dist/repopull-0.4.0-x86_64.AppImage --cli sync --only 'craft-*'
+./dist/repopull-0.4.1-x86_64.AppImage                  # GUI
+./dist/repopull-0.4.1-x86_64.AppImage --cli status
+./dist/repopull-0.4.1-x86_64.AppImage --cli sync --only 'craft-*'
 ```
 
 If FUSE is unavailable, add `--appimage-extract-and-run`.
