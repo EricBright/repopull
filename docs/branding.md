@@ -36,8 +36,8 @@ make test
 ```
 
 `make_icon.py` writes `packaging/repopull.png`, the size-specific assets,
-`repopull-mark.png`, and the symbolic tray assets. Do not hand-edit the PNGs; the geometry and colours live in
-that script. Run `make appimage` only when the change should ship.
+`repopull-mark.png`, the symbolic tray assets, and the checkbox checkmark. Do not
+hand-edit the PNGs; the geometry and colours live in that script. Run `make appimage` only when the change should ship.
 
 ## Files
 
@@ -48,6 +48,7 @@ that script. Run `make appimage` only when the change should ship.
 | `src/repopull/gui/assets/repopull-{16..512}.png` | Window/taskbar `QIcon` sizes |
 | `src/repopull/gui/assets/repopull-mark.png` | Tile-less 64 px sidebar source |
 | `src/repopull/gui/assets/repopull-symbolic-{16,22,24,32}.png` | Symbolic tray mask |
+| `src/repopull/gui/assets/checkmark.png` | Checkbox check used by the theme |
 | `src/repopull/gui/app.py` | Builds the `QIcon` and sets the desktop file name |
 | `src/repopull/gui/window.py` | Places the 28 px sidebar mark |
 

@@ -274,7 +274,7 @@ Runtime is Python 3.11+ with **no third-party packages**. Type checking needs
 | [docs/design-decisions.md](docs/design-decisions.md) | Domain expert | on-demand | asking why, or weighing an alternative | Decision records and rejected paths |
 | [docs/appglider-lessons.md](docs/appglider-lessons.md) | Domain expert | on-demand | researching GitHub API limits or GUI direction | AppGlider findings and sources |
 | [docs/test-falsifiability.md](docs/test-falsifiability.md) | Maintainer | on-demand | assessing test strength or coverage | Mutation/sabotage audit at 0.2.3 |
-| [docs/auto-refresh-plan.md](docs/auto-refresh-plan.md) | Maintainer | on-demand | reviewing the shipped 0.4.0 resident refresh/tray work | Approved plan and implementation record |
+| [docs/auto-refresh-plan.md](docs/auto-refresh-plan.md) | Maintainer | on-demand | reviewing the shipped 0.4.3 resident refresh/tray work | Historical 0.4.3 plan and session handoff |
 | [workflows/watched-repo-sync.md](workflows/watched-repo-sync.md) | Operator | on-demand | implementing or operating the sync loop | Loop spec, safety rules, acceptance |
 
 ## Troubleshooting
