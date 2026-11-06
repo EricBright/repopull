@@ -118,6 +118,10 @@ Tray:
 - 2026-11-05: Phase 2 complete — pure refresh policy, `background_mode`
   and `auto_refresh_s` config, floor/max clamping, scheduler tests.
 - Phase 3 next.
+- 2026-11-05: Phase 3 complete — Background & refresh settings, symbolic tray
+  assets, tray lifecycle, close-to-tray, auto scheduler, single-instance guard.
+- Phase 4 next.
+- 2026-11-05: Phase 4 in progress — final checks, AppImage, and release.
 
 ## Phases
 

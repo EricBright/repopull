@@ -36,6 +36,8 @@ Command-line flags override the file. `--root` overrides `root`.
 | `update_submodules` | boolean | `true` | Run `git submodule update --init --recursive` after a successful update. |
 | `require_git_lfs_for_lfs_repos` | boolean | `true` | Skip repos whose tracked `.gitattributes` uses `filter=lfs` when Git LFS is not installed or not enabled (`git lfs install`). |
 | `log_dir` | string | `"logs"` | Where reports are written. Relative paths resolve against the project root. |
+| `background_mode` | boolean | `false` | Keep running in the system tray when the window is closed. |
+| `auto_refresh_s` | integer (`0` or 300–86400) | `0` | Automatic **status** refresh interval. `0` is off; 1–299 clamp to 300, above 86400 clamps down. |
 | `log_retention_days` | integer ≥ 0 | `30` | Delete timestamped run logs older than this after each run. `0` keeps forever; `latest.*` and `.lock` are never deleted. |
 
 Unknown keys are reported on stderr and ignored, so a newer config does not break
@@ -47,6 +49,15 @@ Only top-level `logs/YYYYMMDD-HHMMSS-<mode>.log` files are eligible for
 deletion. `latest.log`, `latest.json`, `.lock`, unrelated files, and symlinks
 are never touched. Pruning runs after the new run's log and both `latest`
 files are written, so a failed write never destroys old evidence.
+
+## Automatic refresh
+
+`auto_refresh_s = 0` disables it. Values 1–299 are clamped to 300 s and values
+above 86400 s are clamped down. When enabled, only a **status** run (fetch and
+preview) is started; sync is never automatic. Manual runs reset the timer, an
+active run is never overlapped, and failures double the next delay up to one
+hour. The GUI edits minutes, warns below 15 minutes, and uses a hard 5-minute
+floor.
 
 ## Environment variables
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.0 — 2026-11-05
+
+- Added opt-in resident mode: closing can hide to a symbolic system-tray
+  icon instead of quitting. Tray menu: Open, Refresh status now, Pause/Resume
+  automatic refresh, Quit.
+- Added automatic status refresh, off by default. When enabled it has a
+  5-minute hard floor, warns below 15 minutes, only ever runs status, never
+  overlaps a manual run, and backs off after errors.
+- Added `background_mode` and `auto_refresh_s` config keys and GUI controls.
+- Hardened shutdown: cancel active runs, wait for the current repository,
+  release locks, and make `latest.log`/`latest.json`/run logs atomic.
+- Added a single-instance GUI guard.
+
 ## 0.3.0 — 2026-11-05
 
 - Run logs older than 30 days are pruned after each run. `log_retention_days`

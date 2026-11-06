@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import dataclasses
+import random
+import time
 from pathlib import Path
 from threading import Event
 
-from PySide6.QtCore import QSize, Qt, QThreadPool
-from PySide6.QtGui import QCloseEvent, QPixmap
+from PySide6.QtCore import QSize, Qt, QThreadPool, QTimer
+from PySide6.QtGui import QAction, QCloseEvent, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -25,6 +27,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPlainTextEdit,
     QProgressBar,
@@ -32,6 +35,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSpinBox,
     QStackedWidget,
+    QSystemTrayIcon,
     QVBoxLayout,
     QWidget,
 )
@@ -50,7 +54,16 @@ from repopull.gui.jobs import RunTask
 from repopull.gui.lfs_help import LfsHelpDialog
 from repopull.gui.rows import RepoRow, RowView, row_view, unchecked_view
 from repopull.models import Outcome, RepoRef, Report, Row
+from repopull.refresh import (
+    AUTO_REFRESH_JITTER_S,
+    clamp_auto_refresh_s,
+    cooldown_remaining,
+    next_delay,
+    should_warn,
+)
 from repopull.report import load_latest_report
+_ASSETS = Path(__file__).resolve().parent / "assets"
+
 from repopull.sync import (
     ProgressFn,
     RowCallback,
@@ -79,6 +92,17 @@ class MainWindow(QMainWindow):
         self.search = ""
         self.task: RunTask | None = None
         self._quit_requested = False
+        self._tray_available = QSystemTrayIcon.isSystemTrayAvailable()
+        self.tray: QSystemTrayIcon | None = None
+        self.tray_menu: QMenu | None = None
+        self._auto_pause_action: QAction | None = None
+        self.auto_timer = QTimer(self)
+        self.auto_timer.setSingleShot(True)
+        self.auto_timer.timeout.connect(self._auto_refresh_due)
+        self._auto_run = False
+        self._auto_paused = False
+        self._auto_failures = 0
+        self._last_network_finished: float | None = None
         self.current_label: str | None = None
 
         self.setWindowTitle("repopull")
@@ -90,6 +114,8 @@ class MainWindow(QMainWindow):
         self._populate_settings()
         self._render_library()
         self._update_status_block()
+        self._apply_background_mode()
+        self._schedule_auto_refresh()
 
     # ---------------------------------------------------------------- layout
 
@@ -478,6 +504,54 @@ class MainWindow(QMainWindow):
 
         content_layout.addWidget(updates)
 
+        background = QGroupBox("Background & refresh")
+        background_form = QFormLayout(background)
+        background_form.setContentsMargins(16, 18, 16, 14)
+        background_form.setSpacing(10)
+
+        self.settings_background = QCheckBox(
+            "Keep running in the system tray when the window is closed"
+        )
+        self.settings_background.setEnabled(self._tray_available)
+        if not self._tray_available:
+            self.settings_background.setToolTip(
+                "The system tray is not available in this session."
+            )
+        background_form.addRow(self.settings_background)
+
+        self.settings_auto = QCheckBox("Refresh status automatically")
+        background_form.addRow(self.settings_auto)
+
+        self.settings_auto_minutes = QSpinBox()
+        self.settings_auto_minutes.setRange(5, 1440)
+        self.settings_auto_minutes.setSuffix(" minutes")
+        self.settings_auto_minutes.setValue(15)
+        self.settings_auto_minutes.setEnabled(False)
+        background_form.addRow("Every", self.settings_auto_minutes)
+
+        self.settings_auto_warning = QLabel(
+            "Frequent fetches increase load on remote servers; "
+            "15 minutes or longer is recommended."
+        )
+        self.settings_auto_warning.setWordWrap(True)
+        self.settings_auto_warning.setStyleSheet("color: #d29922;")
+        self.settings_auto_warning.setVisible(False)
+        background_form.addRow(self.settings_auto_warning)
+
+        auto_note = QLabel(
+            "Status only — automatic refresh never syncs. "
+            "Closing quits unless the tray setting is enabled."
+        )
+        auto_note.setWordWrap(True)
+        auto_note.setObjectName("Muted")
+        background_form.addRow(auto_note)
+
+        self.settings_auto.toggled.connect(self._on_auto_toggled)
+        self.settings_auto_minutes.valueChanged.connect(
+            self._on_auto_minutes_changed
+        )
+        content_layout.addWidget(background)
+
         storage = QGroupBox("Storage")
         storage_form = QFormLayout(storage)
         storage_form.setContentsMargins(16, 18, 16, 14)
@@ -726,6 +800,18 @@ class MainWindow(QMainWindow):
         )
         self.settings_logs_label.setText(str(self.config.log_dir))
         self.settings_retention.setValue(self.config.log_retention_days)
+        self.settings_background.setChecked(
+            self.config.background_mode and self._tray_available
+        )
+        auto_on = self.config.auto_refresh_s > 0
+        self.settings_auto.setChecked(auto_on)
+        minutes = (
+            max(5, round(self.config.auto_refresh_s / 60))
+            if auto_on
+            else 15
+        )
+        self.settings_auto_minutes.setValue(minutes)
+        self._update_auto_controls()
         self.check_result.setText("")
 
     # ------------------------------------------------------------------ actions
@@ -792,6 +878,20 @@ class MainWindow(QMainWindow):
         if chosen:
             self.settings_root.setText(chosen)
 
+    def _on_auto_toggled(self, _checked: bool) -> None:
+        self._update_auto_controls()
+
+    def _on_auto_minutes_changed(self, _value: int) -> None:
+        self._update_auto_controls()
+
+    def _update_auto_controls(self) -> None:
+        enabled = self.settings_auto.isChecked()
+        self.settings_auto_minutes.setEnabled(enabled)
+        warn = enabled and should_warn(
+            self.settings_auto_minutes.value() * 60
+        )
+        self.settings_auto_warning.setVisible(warn)
+
     def _save_settings(self) -> None:
         root_text = self.settings_root.text().strip()
         if not root_text:
@@ -816,6 +916,17 @@ class MainWindow(QMainWindow):
             update_submodules=self.settings_submodules.isChecked(),
             require_git_lfs_for_lfs_repos=self.settings_lfs.isChecked(),
             log_retention_days=int(self.settings_retention.value()),
+            background_mode=(
+                self.settings_background.isChecked()
+                and self._tray_available
+            ),
+            auto_refresh_s=(
+                0
+                if not self.settings_auto.isChecked()
+                else clamp_auto_refresh_s(
+                    int(self.settings_auto_minutes.value()) * 60
+                )
+            ),
         )
         try:
             save_config(updated, target)
@@ -827,6 +938,8 @@ class MainWindow(QMainWindow):
             return
         self._reload_refs()
         self._populate_settings()
+        self._apply_background_mode()
+        self._schedule_auto_refresh()
         self._render_library()
         self._update_status_block()
         self._flash(f"Saved {target}")
@@ -846,6 +959,10 @@ class MainWindow(QMainWindow):
             defaults.require_git_lfs_for_lfs_repos
         )
         self.settings_retention.setValue(defaults.log_retention_days)
+        self.settings_background.setChecked(False)
+        self.settings_auto.setChecked(False)
+        self.settings_auto_minutes.setValue(15)
+        self._update_auto_controls()
         self.check_result.setText(
             "Defaults restored; press Save settings to write them."
         )
@@ -926,24 +1043,43 @@ class MainWindow(QMainWindow):
         )
 
     def closeEvent(self, event: QCloseEvent) -> None:
-        """Cancel an active run before quitting; never kill git mid-step."""
+        """Hide to tray when configured; otherwise cancel and quit cleanly."""
         if self._quit_requested:
-            if self.task is not None:
-                event.ignore()
-            else:
-                event.accept()
+            self._begin_quit()
+            event.ignore()
+            return
+        if self.config.background_mode and self.tray is not None:
+            event.ignore()
+            self.hide()
+            self.tray.show()
+            return
+        self._begin_quit()
+        if self.task is not None:
+            event.ignore()
+        else:
+            event.accept()
+
+    def request_quit(self) -> None:
+        """Quit from a signal or tray action, bypassing close-to-tray."""
+        self._begin_quit()
+
+    def _begin_quit(self) -> None:
+        self.auto_timer.stop()
+        if self._quit_requested:
+            if self.task is None:
+                self._quit_application()
             return
         self._quit_requested = True
         if self.task is not None:
             self.task.cancel.set()
             self.cancel_button.setEnabled(False)
             self._flash("Stopping after the current repository…")
-            event.ignore()
             return
-        event.accept()
         self._quit_application()
 
     def _quit_application(self) -> None:
+        if self.tray is not None:
+            self.tray.hide()
         app = QApplication.instance()
         if app is not None:
             app.quit()
@@ -952,14 +1088,156 @@ class MainWindow(QMainWindow):
         if self._quit_requested:
             self._quit_application()
 
+    def _apply_background_mode(self) -> None:
+        if not self._tray_available or not self.config.background_mode:
+            if self.tray is not None:
+                self.tray.hide()
+            return
+        self._ensure_tray()
+        if self.tray is not None:
+            self.tray.show()
+
+    def _ensure_tray(self) -> None:
+        if self.tray is not None or not self._tray_available:
+            return
+        icon = QIcon()
+        for size in (16, 22, 24, 32):
+            path = _ASSETS / f"repopull-symbolic-{size}.png"
+            if path.is_file():
+                icon.addFile(str(path), QSize(size, size))
+        if icon.isNull():
+            icon = self.windowIcon()
+        icon.setIsMask(True)
+
+        tray = QSystemTrayIcon(icon, self)
+        tray.setToolTip("repopull")
+        menu = QMenu(self)
+        open_action = QAction("Open repopull", self)
+        open_action.triggered.connect(self._show_from_tray)
+        refresh_action = QAction("Refresh status now", self)
+        refresh_action.triggered.connect(self._refresh_status)
+        self._auto_pause_action = QAction("Pause automatic refresh", self)
+        self._auto_pause_action.setCheckable(True)
+        self._auto_pause_action.setEnabled(self.config.auto_refresh_s > 0)
+        self._auto_pause_action.toggled.connect(self._set_auto_paused)
+        quit_action = QAction("Quit", self)
+        quit_action.triggered.connect(self._begin_quit)
+        menu.addAction(open_action)
+        menu.addAction(refresh_action)
+        menu.addAction(self._auto_pause_action)
+        menu.addSeparator()
+        menu.addAction(quit_action)
+        tray.setContextMenu(menu)
+        tray.activated.connect(self._on_tray_activated)
+        self.tray = tray
+        self.tray_menu = menu
+        self._update_tray_tooltip()
+
+    def _show_from_tray(self) -> None:
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def _on_tray_activated(
+        self, reason: QSystemTrayIcon.ActivationReason
+    ) -> None:
+        if reason in (
+            QSystemTrayIcon.ActivationReason.Trigger,
+            QSystemTrayIcon.ActivationReason.DoubleClick,
+        ):
+            self._show_from_tray()
+
+    def _set_auto_paused(self, paused: bool) -> None:
+        self._auto_paused = paused
+        if self._auto_pause_action is not None:
+            self._auto_pause_action.setText(
+                "Resume automatic refresh" if paused else "Pause automatic refresh"
+            )
+        if paused:
+            self.auto_timer.stop()
+        else:
+            self._schedule_auto_refresh()
+        self._update_tray_tooltip()
+
+    def _jitter_seconds(self) -> float:
+        return float(random.randint(0, AUTO_REFRESH_JITTER_S))
+
+    def _schedule_auto_refresh(self) -> None:
+        if self._auto_pause_action is not None:
+            self._auto_pause_action.setEnabled(self.config.auto_refresh_s > 0)
+        if (
+            self.config.auto_refresh_s <= 0
+            or self._quit_requested
+            or self._auto_paused
+        ):
+            self.auto_timer.stop()
+            return
+        now = time.monotonic()
+        cooldown = cooldown_remaining(
+            self._last_network_finished,
+            now,
+            self.config.auto_refresh_s,
+        )
+        base = next_delay(
+            self.config.auto_refresh_s,
+            self._auto_failures,
+        )
+        delay = max(base, cooldown) + self._jitter_seconds()
+        self.auto_timer.start(int(delay * 1000))
+
+    def _auto_refresh_due(self) -> None:
+        if (
+            self._quit_requested
+            or self.config.auto_refresh_s <= 0
+            or self._auto_paused
+        ):
+            return
+        if self.task is not None:
+            self.auto_timer.start(60_000)
+            return
+        now = time.monotonic()
+        remaining = cooldown_remaining(
+            self._last_network_finished,
+            now,
+            self.config.auto_refresh_s,
+        )
+        if remaining > 0:
+            self.auto_timer.start(
+                int((remaining + self._jitter_seconds()) * 1000)
+            )
+            return
+        if not self.refs:
+            self._schedule_auto_refresh()
+            return
+        self._start_run(self.refs, force=False, mode="status", auto=True)
+
+    def _update_tray_tooltip(self) -> None:
+        if self.tray is None:
+            return
+        if self.report is None:
+            text = "repopull — no run yet"
+        else:
+            text = f"repopull — {self._summary(self.report)}"
+        if self.config.auto_refresh_s > 0:
+            text += "\nAutomatic refresh on"
+        self.tray.setToolTip(text)
+
     def _start_run(
-        self, refs: list[RepoRef], *, force: bool, mode: str
+        self,
+        refs: list[RepoRef],
+        *,
+        force: bool,
+        mode: str,
+        auto: bool = False,
     ) -> None:
         if self.task is not None:
             return
         if not refs:
             self._flash("No repositories to run.")
             return
+        if not auto:
+            self.auto_timer.stop()
+        self._auto_run = auto
         self._set_busy(True)
         config = self.config
 
@@ -1058,6 +1336,15 @@ class MainWindow(QMainWindow):
     def _on_finished(self, report: object) -> None:
         if not isinstance(report, Report):
             return
+        auto = self._auto_run
+        self._auto_run = False
+        self._last_network_finished = time.monotonic()
+        if auto:
+            self._auto_failures = (
+                min(self._auto_failures + 1, 10) if report.has_errors else 0
+            )
+        else:
+            self._auto_failures = 0
         self.report = report
         for row in report.rows:
             self.rows_by_label[row.label] = row
@@ -1066,9 +1353,14 @@ class MainWindow(QMainWindow):
         self._render_library()
         self._update_status_block()
         self._flash(self._summary(report))
+        self._update_tray_tooltip()
+        self._schedule_auto_refresh()
         self._maybe_quit_after_task()
 
     def _on_cancelled(self, report: object) -> None:
+        self._auto_run = False
+        self._last_network_finished = time.monotonic()
+        self._auto_failures = 0
         if isinstance(report, Report):
             self.report = report
             for row in report.rows:
@@ -1078,12 +1370,28 @@ class MainWindow(QMainWindow):
         self._render_library()
         self._update_status_block()
         self._flash("Cancelled")
+        self._update_tray_tooltip()
+        self._schedule_auto_refresh()
         self._maybe_quit_after_task()
 
     def _on_failed(self, message: str) -> None:
+        auto = self._auto_run
+        self._auto_run = False
+        self._last_network_finished = time.monotonic()
         self.task = None
         self._set_busy(False)
         self._flash("Run failed")
+        if auto:
+            self._auto_failures = min(self._auto_failures + 1, 10)
+            if self.tray is not None:
+                self.tray.setToolTip("repopull — automatic refresh failed")
+            self._schedule_auto_refresh()
+            if self._quit_requested:
+                self._maybe_quit_after_task()
+            return
+        self._auto_failures = 0
+        self._update_tray_tooltip()
+        self._schedule_auto_refresh()
         if self._quit_requested:
             self._maybe_quit_after_task()
             return

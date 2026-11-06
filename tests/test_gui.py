@@ -256,6 +256,78 @@ if HAVE_PYSIDE:
                 self.assertEqual(reloaded.log_retention_days, 7)
                 window.close()
 
+        def test_auto_refresh_warning_and_save(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = self._tree(base)
+                config_path = base / "config.toml"
+                config = Config(
+                    root=root,
+                    log_dir=base / "logs",
+                    delay_between_repos_s=0,
+                    update_submodules=False,
+                    config_path=config_path,
+                    root_source="test",
+                )
+                save_config(config, config_path)
+                window = MainWindow(config)
+
+                window.settings_auto.setChecked(True)
+                window.settings_auto_minutes.setValue(5)
+                self.assertFalse(window.settings_auto_warning.isHidden())
+                self.assertIn("15 minutes", window.settings_auto_warning.text())
+
+                window.settings_auto_minutes.setValue(15)
+                self.assertTrue(window.settings_auto_warning.isHidden())
+
+                window.settings_auto_minutes.setValue(10)
+                window._save_settings()
+
+                reloaded = load_config(config_path=config_path)
+                self.assertEqual(reloaded.auto_refresh_s, 600)
+                self.assertFalse(reloaded.background_mode)
+                self.assertTrue(window.auto_timer.isActive())
+                window._set_auto_paused(True)
+                self.assertFalse(window.auto_timer.isActive())
+                window._set_auto_paused(False)
+                self.assertTrue(window.auto_timer.isActive())
+                window.close()
+
+        def test_tray_menu_is_built(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = self._tree(base)
+                window = MainWindow(self._config(base, root))
+                window._tray_available = True
+                window._ensure_tray()
+
+                self.assertIsNotNone(window.tray)
+                self.assertIsNotNone(window.tray_menu)
+                self.assertTrue(window.tray.icon().isMask())
+                window.request_quit()
+
+        def test_close_to_tray_hides_instead_of_quitting(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = self._tree(base)
+                config = Config(
+                    root=root,
+                    log_dir=base / "logs",
+                    delay_between_repos_s=0,
+                    update_submodules=False,
+                    background_mode=True,
+                )
+                window = MainWindow(config)
+                window._tray_available = True
+                window._ensure_tray()
+                window.show()
+
+                window.close()
+
+                self.assertFalse(window.isVisible())
+                self.assertFalse(window._quit_requested)
+                window.request_quit()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -275,4 +275,36 @@ is exposed in the GUI's Storage section. The latest snapshot and lock survive, s
 the GUI and a running sync are unaffected. See
 [configuration.md](configuration.md#log-retention).
 
+## 23. Automatic refresh is status-only and floor-limited
+
+**Context:** A resident app could fetch the watched repositories indefinitely.
+That is a load on third-party servers and could overlap a manual status or sync.
+
+**Decision:** `auto_refresh_s` is off by default (`0`). When enabled it is
+status-only, never syncs, never overlaps another run, and resets after any
+manual run. The hard floor is 300 s, the GUI presets 900 s, and the GUI warns in
+orange below 900 s. Failures back off exponentially to one hour; jitter prevents
+lockstep fetches.
+
+**Consequences:** The default is respectful and quiet. Users who want freshness
+opt in and cannot accidentally choose a sub-5-minute cadence. A CLI run holding
+the lock simply postpones the next auto attempt. See
+[configuration.md](configuration.md#automatic-refresh).
+
+## 24. Close-to-tray is opt-in and quits gracefully
+
+**Context:** Automatic refresh only helps if the app can outlive its window. A
+process that quits immediately on close cannot keep a schedule; a process that
+never quits needs a reliable exit and a visible control.
+
+**Decision:** `background_mode = false` by default. When enabled, closing hides
+to a symbolic system-tray icon; the tray has Open, Refresh status now,
+Pause/Resume automatic refresh, and Quit. Quit cancels the active run, waits for
+the current repository, releases the locks, and then exits. The GUI is
+single-instance. With background mode off, closing quits.
+
+**Consequences:** No surprise resident process on first run. Normal minimize
+stays in the taskbar; only close goes to the tray. The user always has an
+explicit Quit path. See [gui.md](gui.md).
+
 For the full documentation index, see [README.md](../README.md#documentation-index).

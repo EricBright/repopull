@@ -37,6 +37,12 @@ class IconTests(unittest.TestCase):
         self.assertTrue(path.is_file(), path)
         self.assertGreater(path.stat().st_size, 0)
 
+    def test_symbolic_sizes_exist(self) -> None:
+        for size in (16, 22, 24, 32):
+            path = ASSETS / f"repopull-symbolic-{size}.png"
+            self.assertTrue(path.is_file(), path)
+            self.assertGreater(path.stat().st_size, 0)
+
     def test_window_icon_has_all_sizes(self) -> None:
         icon = build_app_icon()
 

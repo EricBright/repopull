@@ -44,11 +44,18 @@ the library then fills. Nothing is hard-coded into the app.
   tree, Git LFS, submodules, remote URL, and the last result.
 - **Force sync…** on the detail page resets one repository after a confirmation.
 - **Settings**: grouped into Watching (folder, depth, ignore globs), Network
-  (delay, timeouts), Updates (submodules, LFS), and Storage (logs, retention).
-  Saving writes
+  (delay, timeouts), Updates (submodules, LFS), Background & refresh (tray,
+  automatic status refresh), and Storage (logs, retention). Saving writes
   `config.toml`; **Reset to defaults** restores the shipped values first. The
   logs path is resolved at runtime from `$XDG_CONFIG_HOME` (or `~/.config`).
   **Keep run logs** sets `log_retention_days`; `0` keeps every run log.
+  **Keep running in the system tray** is close-to-tray; normal minimize stays in
+  the taskbar. **Refresh status automatically** is status-only, off by default,
+  has a 5-minute hard floor, and shows an orange warning below 15 minutes. A
+  manual status or sync resets the next automatic run.
+  With background mode on, the symbolic tray menu offers Open, Refresh status
+  now, Pause/Resume automatic refresh, and Quit. Quit waits for the current
+  repository and releases the locks. A second GUI launch refuses to start.
   The **Git LFS** row shows whether `git-lfs` is installed and enabled;
   **Help…** explains what LFS is and shows the install command for the detected
   distribution plus `git lfs install`. Nothing is installed or run automatically.

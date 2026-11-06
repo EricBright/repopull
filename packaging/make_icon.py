@@ -22,6 +22,7 @@ SMALL_BLUE = "#9cc8ff"
 SMALL_VIOLET = "#c4b5ff"
 SMALL_SIZES = (16, 22, 24)
 DISPLAY_SIZES = (32, 48, 64, 128, 256, 512)
+SYMBOLIC_SIZES = (16, 22, 24, 32)
 
 
 def _fmt(point: tuple[float, float]) -> str:
@@ -135,6 +136,14 @@ def _mark_svg() -> str:
 </svg>
 """
 
+def _symbolic_svg() -> str:
+    mark = _display_mark().replace(VIOLET, "#ffffff").replace(BLUE, "#ffffff")
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"
+     viewBox="140 116 232 300">
+  {mark}
+</svg>
+"""
+
 
 def render(svg: str, size: int) -> QImage:
     image = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
@@ -164,6 +173,12 @@ def main() -> None:
     for size in DISPLAY_SIZES:
         _save(render(display, size), ASSETS / f"repopull-{size}.png")
     _save(render(_mark_svg(), 64), ASSETS / "repopull-mark.png")
+    symbolic = _symbolic_svg()
+    for size in SYMBOLIC_SIZES:
+        _save(
+            render(symbolic, size),
+            ASSETS / f"repopull-symbolic-{size}.png",
+        )
     app.quit()
 
 

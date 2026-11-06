@@ -96,7 +96,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         window = MainWindow(config)
 
         def request_quit(*_args: object) -> None:
-            window.close()
+            window.request_quit()
 
         for sig in (signal.SIGINT, signal.SIGTERM):
             signal.signal(sig, request_quit)

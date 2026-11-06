@@ -23,6 +23,8 @@ optical size, not a second brand; the reason and trade-off are recorded in
   multi-size `QIcon` loaded from `src/repopull/gui/assets/repopull-*.png`; the
   desktop file name is `repopull`.
 - **Sidebar:** `repopull-mark.png` at 28 px, next to the wordmark.
+- **Tray:** `repopull-symbolic-{16,22,24,32}.png`, a white/alpha mask used with
+  `QIcon.setIsMask(True)` so KDE/Bazzite can recolour it for the panel theme.
 - **AppImage icon theme:** `packaging/build_appimage.py` stages 16/22/24/32/48/64/128/256/512
   into `usr/share/icons/hicolor/...` so the launcher can choose the right cut.
 
@@ -33,8 +35,8 @@ python3 packaging/make_icon.py
 make test
 ```
 
-`make_icon.py` writes `packaging/repopull.png`, the size-specific assets, and
-`repopull-mark.png`. Do not hand-edit the PNGs; the geometry and colours live in
+`make_icon.py` writes `packaging/repopull.png`, the size-specific assets,
+`repopull-mark.png`, and the symbolic tray assets. Do not hand-edit the PNGs; the geometry and colours live in
 that script. Run `make appimage` only when the change should ship.
 
 ## Files
@@ -45,6 +47,7 @@ that script. Run `make appimage` only when the change should ship.
 | `packaging/repopull.png` | 256 px AppImage/desktop icon |
 | `src/repopull/gui/assets/repopull-{16..512}.png` | Window/taskbar `QIcon` sizes |
 | `src/repopull/gui/assets/repopull-mark.png` | Tile-less 64 px sidebar source |
+| `src/repopull/gui/assets/repopull-symbolic-{16,22,24,32}.png` | Symbolic tray mask |
 | `src/repopull/gui/app.py` | Builds the `QIcon` and sets the desktop file name |
 | `src/repopull/gui/window.py` | Places the 28 px sidebar mark |
 
