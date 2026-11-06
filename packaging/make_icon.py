@@ -136,6 +136,15 @@ def _mark_svg() -> str:
 </svg>
 """
 
+def _checkmark_svg() -> str:
+    return """<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"
+     viewBox="0 0 32 32">
+  <path d="M 7 17 L 13 23 L 25 10" fill="none" stroke="#10141b"
+        stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+"""
+
+
 def _symbolic_svg() -> str:
     mark = _display_mark().replace(VIOLET, "#ffffff").replace(BLUE, "#ffffff")
     return f"""<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"
@@ -173,6 +182,7 @@ def main() -> None:
     for size in DISPLAY_SIZES:
         _save(render(display, size), ASSETS / f"repopull-{size}.png")
     _save(render(_mark_svg(), 64), ASSETS / "repopull-mark.png")
+    _save(render(_checkmark_svg(), 32), ASSETS / "checkmark.png")
     symbolic = _symbolic_svg()
     for size in SYMBOLIC_SIZES:
         _save(

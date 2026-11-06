@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +52,7 @@ def rgba(hex_color: str, alpha: float) -> str:
 def stylesheet(palette: Palette = PALETTE) -> str:
     """The application stylesheet, generated from `palette`."""
     p = palette
+    check = (Path(__file__).resolve().parent / "assets" / "checkmark.png").as_posix()
     return f"""
     * {{
         font-family: "Inter", "Cantarell", "Noto Sans", sans-serif;
@@ -205,6 +207,28 @@ def stylesheet(palette: Palette = PALETTE) -> str:
     QCheckBox {{
         color: {p.text};
         spacing: 8px;
+    }}
+    QCheckBox:disabled {{
+        color: {p.faint};
+    }}
+    QCheckBox::indicator {{
+        width: 16px;
+        height: 16px;
+        border: 1px solid {p.faint};
+        border-radius: 4px;
+        background: {p.surface2};
+    }}
+    QCheckBox::indicator:hover {{
+        border-color: {p.accent};
+    }}
+    QCheckBox::indicator:checked {{
+        background: {p.accent};
+        border-color: {p.accent};
+        image: url("{check}");
+    }}
+    QCheckBox::indicator:disabled {{
+        background: {p.surface};
+        border-color: {p.line};
     }}
     QGroupBox {{
         background: {p.surface};

@@ -306,6 +306,19 @@ if HAVE_PYSIDE:
                 self.assertTrue(window.tray.icon().isMask())
                 window.request_quit()
 
+        def test_editing_interval_enables_auto_refresh(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = self._tree(base)
+                window = MainWindow(self._config(base, root))
+                self.assertFalse(window.settings_auto.isChecked())
+
+                window.settings_auto_minutes.setValue(10)
+
+                self.assertTrue(window.settings_auto.isChecked())
+                self.assertFalse(window.settings_auto_warning.isHidden())
+                window.request_quit()
+
         def test_tray_is_visible_without_background_mode(self) -> None:
             with tempfile.TemporaryDirectory() as tmp:
                 base = Path(tmp)

@@ -43,6 +43,11 @@ class IconTests(unittest.TestCase):
             self.assertTrue(path.is_file(), path)
             self.assertGreater(path.stat().st_size, 0)
 
+    def test_checkbox_checkmark_exists(self) -> None:
+        path = ASSETS / "checkmark.png"
+        self.assertTrue(path.is_file(), path)
+        self.assertGreater(path.stat().st_size, 0)
+
     def test_window_icon_has_all_sizes(self) -> None:
         icon = build_app_icon()
 

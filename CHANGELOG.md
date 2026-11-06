@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.2 — 2026-11-05
+
+- Fixed the invisible unchecked checkbox indicator in the dark theme; both
+  states now have an explicit border/fill and the checked state uses a
+  generated checkmark.
+- Escaped the `&` in the Background & refresh group title so Qt displays it
+  literally instead of treating it as a mnemonic.
+- The interval field is always editable; changing it enables automatic refresh
+  rather than leaving a disabled-looking control.
+
 ## 0.4.1 — 2026-11-05
 
 - Moved Background & refresh above Network and added a tray-availability

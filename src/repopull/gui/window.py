@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from threading import Event
 
-from PySide6.QtCore import QSize, Qt, QThreadPool, QTimer
+from PySide6.QtCore import QSignalBlocker, QSize, Qt, QThreadPool, QTimer
 from PySide6.QtGui import QAction, QCloseEvent, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -449,7 +449,7 @@ class MainWindow(QMainWindow):
         watch_form.addRow("Ignore", self.settings_ignore)
         content_layout.addWidget(watching)
 
-        background = QGroupBox("Background & refresh")
+        background = QGroupBox("Background && refresh")
         background_form = QFormLayout(background)
         background_form.setContentsMargins(16, 18, 16, 14)
         background_form.setSpacing(10)
@@ -482,7 +482,6 @@ class MainWindow(QMainWindow):
         self.settings_auto_minutes.setRange(5, 1440)
         self.settings_auto_minutes.setSuffix(" minutes")
         self.settings_auto_minutes.setValue(15)
-        self.settings_auto_minutes.setEnabled(False)
         background_form.addRow("Every", self.settings_auto_minutes)
 
         self.settings_auto_warning = QLabel(
@@ -822,7 +821,9 @@ class MainWindow(QMainWindow):
             if auto_on
             else 15
         )
+        blocker = QSignalBlocker(self.settings_auto_minutes)
         self.settings_auto_minutes.setValue(minutes)
+        del blocker
         self._update_auto_controls()
         self.check_result.setText("")
 
@@ -894,12 +895,13 @@ class MainWindow(QMainWindow):
         self._update_auto_controls()
 
     def _on_auto_minutes_changed(self, _value: int) -> None:
+        if not self.settings_auto.isChecked():
+            self.settings_auto.setChecked(True)
         self._update_auto_controls()
 
     def _update_auto_controls(self) -> None:
-        enabled = self.settings_auto.isChecked()
-        self.settings_auto_minutes.setEnabled(enabled)
-        warn = enabled and should_warn(
+        self.settings_auto_minutes.setEnabled(True)
+        warn = self.settings_auto.isChecked() and should_warn(
             self.settings_auto_minutes.value() * 60
         )
         self.settings_auto_warning.setVisible(warn)
@@ -973,7 +975,9 @@ class MainWindow(QMainWindow):
         self.settings_retention.setValue(defaults.log_retention_days)
         self.settings_background.setChecked(False)
         self.settings_auto.setChecked(False)
+        blocker = QSignalBlocker(self.settings_auto_minutes)
         self.settings_auto_minutes.setValue(15)
+        del blocker
         self._update_auto_controls()
         self.check_result.setText(
             "Defaults restored; press Save settings to write them."

@@ -7,8 +7,9 @@ parser and GUI row mapping. Raw artifacts live in `_temp/` (gitignored).
 
 This audit covered the 0.2.3 suite of 80 tests. Four icon tests, a docs-version
 sync test, three documentation-system checks, five log-retention tests, one
-lock-durability test, sixteen auto-refresh/config tests, and five tray/settings
-tests were added later; the current suite is 115 at 0.4.1.
+lock-durability test, sixteen auto-refresh/config tests, six tray/settings
+tests, and one checkbox-asset test were added later; the current suite is 117
+at 0.4.2.
 
 **Question:** for each test, is there a defect it would catch?
 

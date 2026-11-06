@@ -12,7 +12,7 @@ never pushes, commits, branches, tags, or opens a pull request.
 
 ## Status
 
-**Current release: 0.4.1.** Tests and mypy pass; the latest AppImage is built
+**Current release: 0.4.2.** Tests and mypy pass; the latest AppImage is built
 from this checkout. No release blockers. Remaining test-coverage work is in the
 [test audit](docs/test-falsifiability.md); the 16 px icon keeps its branches at
 the cost of softness (see [branding](docs/branding.md)).
@@ -135,14 +135,14 @@ importable, otherwise it lets `uv` provide it for that run.
 
 ```bash
 make appimage
-./dist/repopull-0.4.1-x86_64.AppImage
+./dist/repopull-0.4.2-x86_64.AppImage
 ```
 
 The image bundles Python 3.13, PySide6 and repopull. Run the CLI from it with
 `--cli`:
 
 ```bash
-./dist/repopull-0.4.1-x86_64.AppImage --cli status
+./dist/repopull-0.4.2-x86_64.AppImage --cli status
 ```
 
 It keeps `config.toml` and logs in `~/.config/repopull` (or `$REPOPULL_HOME`).
@@ -241,7 +241,7 @@ make test        # unit and integration tests, offline, uses temp repos
 make typecheck   # mypy --strict
 make check       # both
 make gui         # launch the optional PySide6 interface
-make appimage    # build dist/repopull-0.4.1-x86_64.AppImage
+make appimage    # build dist/repopull-0.4.2-x86_64.AppImage
 make bump        # increment the patch version
 make release     # check, bump the patch, build the AppImage
 ```
