@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -357,18 +358,23 @@ class LfsConfigTests(unittest.TestCase):
             base = Path(tmp)
             _remote, _seed, watched = support.make_pair(base)
 
-            self.assertFalse(git.git_lfs_enabled(watched, timeout=10))
-            support.git(
-                "config",
-                "filter.lfs.clean",
-                "git-lfs clean -- %f",
-                cwd=watched,
-            )
-            support.git(
-                "config",
-                "filter.lfs.smudge",
-                "git-lfs smudge -- %f",
-                cwd=watched,
-            )
+            isolated = {
+                "GIT_CONFIG_GLOBAL": os.devnull,
+                "GIT_CONFIG_NOSYSTEM": "1",
+            }
+            with patch.dict(os.environ, isolated):
+                self.assertFalse(git.git_lfs_enabled(watched, timeout=10))
+                support.git(
+                    "config",
+                    "filter.lfs.clean",
+                    "git-lfs clean -- %f",
+                    cwd=watched,
+                )
+                support.git(
+                    "config",
+                    "filter.lfs.smudge",
+                    "git-lfs smudge -- %f",
+                    cwd=watched,
+                )
 
-            self.assertTrue(git.git_lfs_enabled(watched, timeout=10))
+                self.assertTrue(git.git_lfs_enabled(watched, timeout=10))
