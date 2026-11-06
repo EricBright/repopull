@@ -12,5 +12,6 @@ update_submodules = true
 require_git_lfs_for_lfs_repos = true
 background_mode = false
 auto_refresh_s = 0
+auto_refresh_pause_when_hidden = false
 log_dir = "logs"
 log_retention_days = 30

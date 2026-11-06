@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.8 — 2026-11-06
+
+- Recheck Git LFS status when Settings is shown, when the app window becomes
+  active with Settings open, after a run, or via the new **Check again** button.
+  The check is event-driven; there is no background filesystem watcher and no
+  new timer.
+- The automatic-refresh interval hint now notes that each check may spin up an
+  external drive.
+- Added opt-in **Pause while hidden**: automatic status refresh stops when the
+  window is closed to the tray or minimized, and catches up when the window
+  returns. Manual runs still work; in-flight runs finish.
+
 ## 0.4.7 — 2026-11-06
 
 - Rebuilt the GUI Settings page as five sections (Watching, Refresh, Network,

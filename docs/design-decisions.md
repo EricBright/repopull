@@ -434,4 +434,48 @@ be a separate change. The section rail adds a second 140 px column, leaving
 enough width for path fields at the minimum window size. See
 [gui.md](gui.md#settings).
 
+## 31. LFS status is rechecked on demand, not watched
+
+**Context:** Installing `git-lfs` while the GUI is already running does not
+change the status line until something reads the environment again. A file
+watcher on `PATH` or a polling timer would keep the window updated
+automatically, but both add machinery for a rare event and can keep the process
+busy for no user-visible gain.
+
+**Decision:** Re-read LFS status when Settings is shown, when the main window
+becomes active with Settings open, after a run, or with the **Check again**
+button. The activation check is throttled and only repeats while the status is
+missing or not enabled. There is no background watcher, no extra timer, and the
+check does not touch the watched repositories or their disk.
+
+**Consequences:** Installing or enabling `git-lfs` is picked up as soon as the
+user returns to the app with Settings open, or the next time Settings is opened,
+or after the next run. A change made while the app is idle and Settings is
+closed is seen on the next Settings visit. The normal cost is a `which` lookup
+when LFS is absent; checking enabled state reads Git's system and global config
+only. See [gui.md](gui.md#settings).
+
+## 32. Automatic refresh can pause while the window is hidden
+
+**Context:** A watched root on an external USB hard disk is woken by every
+status run. With background mode and a short interval, a tray-only app can keep
+spinning the drive up while nobody is using it. The user should be able to keep
+automatic freshness while the window is open without paying that cost all day.
+
+**Decision:** Add opt-in `auto_refresh_pause_when_hidden`. When enabled, the
+automatic timer stops whenever the main window is not visible or is minimized.
+No automatic fetch, network retry, or suspend-resume check starts while hidden.
+When the window returns, the normal schedule starts again; if the interval is
+already due, one check runs. Manual runs from the window or tray are unaffected,
+and an in-flight run is allowed to finish. The default is `false`, so existing
+behavior is unchanged.
+
+**Consequences:** A background repopull can now stay in the tray without waking
+an external drive, at the cost of stale data until the window returns or a
+manual refresh is requested. Minimized windows count as hidden; otherwise
+minimizing would bypass the option. The setting lives in `config.toml` beside
+the other refresh behavior and is written immediately, like background mode.
+See [configuration.md](configuration.md#automatic-refresh) and
+[gui.md](gui.md#settings).
+
 For the full documentation index, see [README.md](../README.md#documentation-index).

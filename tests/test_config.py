@@ -51,6 +51,7 @@ class SaveConfigTests(unittest.TestCase):
             self.assertEqual(loaded.log_retention_days, 30)
             self.assertFalse(loaded.background_mode)
             self.assertEqual(loaded.auto_refresh_s, 0)
+            self.assertFalse(loaded.auto_refresh_pause_when_hidden)
 
     def test_negative_log_retention_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -121,6 +122,7 @@ class SaveConfigTests(unittest.TestCase):
                 log_retention_days=7,
                 background_mode=True,
                 auto_refresh_s=900,
+                auto_refresh_pause_when_hidden=True,
                 update_submodules=False,
                 require_git_lfs_for_lfs_repos=False,
                 config_path=path,
@@ -136,6 +138,7 @@ class SaveConfigTests(unittest.TestCase):
             self.assertEqual(loaded.log_retention_days, 7)
             self.assertTrue(loaded.background_mode)
             self.assertEqual(loaded.auto_refresh_s, 900)
+            self.assertTrue(loaded.auto_refresh_pause_when_hidden)
             self.assertAlmostEqual(loaded.delay_between_repos_s, 1.5)
             self.assertFalse(loaded.update_submodules)
             self.assertFalse(loaded.require_git_lfs_for_lfs_repos)
@@ -148,7 +151,8 @@ class SaveConfigTests(unittest.TestCase):
                 "# keep this comment\n"
                 'root = "/tmp/repos"\n'
                 "background_mode = false\n"
-                "auto_refresh_s = 0\n",
+                "auto_refresh_s = 0\n"
+                "auto_refresh_pause_when_hidden = false\n",
                 encoding="utf-8",
             )
 
@@ -156,6 +160,7 @@ class SaveConfigTests(unittest.TestCase):
                 path,
                 background_mode=True,
                 auto_refresh_s=600,
+                auto_refresh_pause_when_hidden=True,
             )
             text = path.read_text(encoding="utf-8")
 
@@ -163,5 +168,9 @@ class SaveConfigTests(unittest.TestCase):
             self.assertIn('root = "/tmp/repos"', text)
             self.assertIn("background_mode = true", text)
             self.assertIn("auto_refresh_s = 600", text)
+            self.assertIn("auto_refresh_pause_when_hidden = true", text)
             self.assertEqual(text.count("background_mode"), 1)
             self.assertEqual(text.count("auto_refresh_s"), 1)
+            self.assertEqual(
+                text.count("auto_refresh_pause_when_hidden"), 1
+            )

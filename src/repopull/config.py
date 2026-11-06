@@ -27,6 +27,7 @@ _KNOWN_KEYS: Final[frozenset[str]] = frozenset(
         "require_git_lfs_for_lfs_repos",
         "background_mode",
         "auto_refresh_s",
+        "auto_refresh_pause_when_hidden",
         "log_dir",
         "log_retention_days",
     }
@@ -64,6 +65,7 @@ class Config:
     require_git_lfs_for_lfs_repos: bool = True
     background_mode: bool = False
     auto_refresh_s: int = 0
+    auto_refresh_pause_when_hidden: bool = False
     log_dir: Path = field(default_factory=lambda: project_home() / "logs")
     log_retention_days: int = 30
     # Provenance, so the tool can explain where it is pointing and why.
@@ -201,6 +203,10 @@ def load_config(
                 data.get("background_mode", False), "background_mode"
             ),
             auto_refresh_s=auto_refresh_s,
+            auto_refresh_pause_when_hidden=_as_bool(
+                data.get("auto_refresh_pause_when_hidden", False),
+                "auto_refresh_pause_when_hidden",
+            ),
             log_dir=log_dir,
             log_retention_days=_as_non_negative_int(
                 data.get("log_retention_days", 30), "log_retention_days"
@@ -270,6 +276,8 @@ def save_config(config: Config, path: Path) -> None:
             f"{str(config.require_git_lfs_for_lfs_repos).lower()}",
             f"background_mode = {str(config.background_mode).lower()}",
             f"auto_refresh_s = {config.auto_refresh_s}",
+            "auto_refresh_pause_when_hidden = "
+            f"{str(config.auto_refresh_pause_when_hidden).lower()}",
             f"log_dir = {json.dumps(str(config.log_dir))}",
             f"log_retention_days = {config.log_retention_days}",
             "",
@@ -283,8 +291,9 @@ def save_behavior_settings(
     *,
     background_mode: bool,
     auto_refresh_s: int,
+    auto_refresh_pause_when_hidden: bool,
 ) -> None:
-    """Update only the two behavior keys, preserving other lines and comments.
+    """Update only the three behavior keys, preserving comments and other keys.
 
     This is for the checkboxes that must take effect immediately; the full
     `save_config` rewrite remains behind the Save button.
@@ -292,6 +301,9 @@ def save_behavior_settings(
     updates = {
         "background_mode": str(background_mode).lower(),
         "auto_refresh_s": str(auto_refresh_s),
+        "auto_refresh_pause_when_hidden": str(
+            auto_refresh_pause_when_hidden
+        ).lower(),
     }
     lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
     found: set[str] = set()

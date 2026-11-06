@@ -42,6 +42,7 @@ Command-line flags override the file. `--root` overrides `root`.
 | `log_dir` | string | `"logs"` | Where reports are written. Relative paths resolve against the project root. It must be writable and have at least 16 MiB free. |
 | `background_mode` | boolean | `false` | Keep running in the system tray when the window is closed. |
 | `auto_refresh_s` | integer (`0` or 300–86400) | `0` | Automatic **status** refresh interval. `0` is off; 1–299 clamp to 300, above 86400 clamps down. |
+| `auto_refresh_pause_when_hidden` | boolean | `false` | Stop automatic status refresh while the window is closed to the tray or minimized. The next check runs when the window returns, if the interval is due. |
 | `log_retention_days` | integer ≥ 0 | `30` | Delete timestamped run logs older than this after each run. `0` keeps forever; `latest.*` and `.lock` are never deleted. |
 
 Unknown keys are reported on stderr and ignored, so a newer config does not break
@@ -64,6 +65,18 @@ preview) is started; sync is never automatic. Manual runs reset the timer, an
 active run is never overlapped, and failures double the next delay up to one
 hour. The GUI edits minutes, warns below 15 minutes, and uses a hard 5-minute
 floor.
+
+A status run reads each repository's `.git` directory and may spin up an
+external USB hard disk. Automatic refresh is off by default for that reason.
+If the watched root is on a spinning disk, prefer an interval measured in hours
+and use **Refresh status** when you sit down; repopull does not change the
+disk's power-management settings.
+
+`auto_refresh_pause_when_hidden = true` stops the automatic timer when the
+window is closed to the tray or minimized. No automatic fetch, network retry, or
+resume check runs while hidden. When the window returns, one check runs if the
+interval is due; a manual run from the tray or window still works at any time.
+The setting is off by default and only affects automatic runs.
 
 A DNS, connection, proxy, reset, or timeout failure is treated as a network
 outage. Two consecutive such failures stop the sweep; the remaining

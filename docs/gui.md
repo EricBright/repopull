@@ -60,7 +60,7 @@ window size.
 | Section | Controls |
 |---|---|
 | **Watching** | Watched folder with Browse and Check, search depth, ignore globs |
-| **Refresh** | Close to tray, automatic status refresh, interval |
+| **Refresh** | Close to tray, automatic status refresh, pause while hidden, interval |
 | **Network** | Delay between fetches, fetch timeout, other git timeout |
 | **Updates** | Submodules, LFS skip policy, LFS status and Help |
 | **Storage** | Config file, logs directory, log retention |
@@ -87,6 +87,11 @@ failures stop that sweep and mark the remaining repositories "not attempted";
 automatic retries are 2, 5, 15, 30, and 60 minutes, so a reconnect is noticed
 quickly without repeatedly timing out every repository.
 
+**Pause while hidden** is opt-in. It stops automatic checks when the window is
+closed to the tray or minimized, so a background repopull does not wake an
+external drive. Manual runs still work. When the window returns, one check runs
+if the interval is due. In-flight runs are not cancelled.
+
 With background mode on, the symbolic tray menu offers Open, Refresh status now,
 Pause/Resume automatic refresh, and Quit. Quit cancels the current git command,
 waits for the worker to unwind, and releases the locks. A cancelled git command
@@ -95,8 +100,11 @@ it rather than forcing a repair. A second GUI launch refuses to start.
 
 The **Git LFS** row shows whether `git-lfs` is installed and enabled; **Help…**
 explains what LFS is and shows the install command for the detected distribution
-plus `git lfs install`. Nothing is installed or run automatically. The same help
-appears on a repository's page when LFS is why it cannot sync.
+plus `git lfs install`. Nothing is installed or run automatically. The status is
+rechecked when Settings is shown, when the window becomes active with Settings
+open, after a run, or with **Check again**; there is no background filesystem
+watcher. The same help appears on a repository's page when LFS is why it cannot
+sync.
 
 The window/taskbar icon and the sidebar mark are documented in
 [branding.md](branding.md).

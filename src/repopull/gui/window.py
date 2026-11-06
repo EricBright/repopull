@@ -10,6 +10,7 @@ from pathlib import Path
 from threading import Event
 
 from PySide6.QtCore import (
+    QEvent,
     QObject,
     QRunnable,
     QSignalBlocker,
@@ -19,7 +20,14 @@ from PySide6.QtCore import (
     QTimer,
     Signal,
 )
-from PySide6.QtGui import QAction, QCloseEvent, QIcon, QPixmap
+from PySide6.QtGui import (
+    QAction,
+    QCloseEvent,
+    QHideEvent,
+    QIcon,
+    QPixmap,
+    QShowEvent,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -58,7 +66,7 @@ from repopull.config import (
     save_config,
 )
 from repopull.discovery import DiscoveryError, discover_repos
-from repopull.diagnostics import lfs_status
+from repopull.diagnostics import LfsStatus, lfs_status
 from repopull.gui.jobs import RunTask
 from repopull.gui.lfs_help import LfsHelpDialog
 from repopull.gui.rows import RepoRow, RowView, row_view, unchecked_view
@@ -170,6 +178,8 @@ class MainWindow(QMainWindow):
         self._loading_settings = False
         self._settings_section = 0
         self._settings_dirty = False
+        self._lfs_status: LfsStatus | None = None
+        self._lfs_last_check = 0.0
         self._tray_available = QSystemTrayIcon.isSystemTrayAvailable()
         self.tray: QSystemTrayIcon | None = None
         self.tray_menu: QMenu | None = None
@@ -699,6 +709,23 @@ class MainWindow(QMainWindow):
             )
         )
 
+        self.settings_hidden_pause = QCheckBox()
+        self.settings_hidden_pause.setAccessibleName(
+            "Pause automatic refresh while hidden"
+        )
+        self.settings_hidden_pause.setToolTip(
+            "No automatic checks while the window is closed to the tray or "
+            "minimized. The next check runs when the window returns, if due."
+        )
+        card.add(
+            SettingRow(
+                "Pause while hidden",
+                "Automatic checks stop when the window is closed to the tray "
+                "or minimized.",
+                self.settings_hidden_pause,
+            )
+        )
+
         self.settings_auto_minutes = QSpinBox()
         self.settings_auto_minutes.setRange(5, 1440)
         self.settings_auto_minutes.setSuffix(" minutes")
@@ -710,7 +737,7 @@ class MainWindow(QMainWindow):
         card.add(
             SettingRow(
                 "Check every",
-                "5-minute floor.",
+                "5-minute floor. Each check may spin up an external drive.",
                 self.settings_auto_minutes,
             )
         )
@@ -733,6 +760,9 @@ class MainWindow(QMainWindow):
 
         self.settings_background.toggled.connect(self._on_background_toggled)
         self.settings_auto.toggled.connect(self._on_auto_toggled)
+        self.settings_hidden_pause.toggled.connect(
+            self._on_hidden_pause_toggled
+        )
         self.settings_auto_minutes.valueChanged.connect(
             self._on_auto_minutes_changed
         )
@@ -832,6 +862,18 @@ class MainWindow(QMainWindow):
         self.settings_lfs_status.setObjectName("SettingHint")
         lfs_row.addWidget(self.settings_lfs_status)
         lfs_row.addStretch(1)
+        self.settings_lfs_check = QPushButton("Check again")
+        self.settings_lfs_check.setObjectName("Ghost")
+        self.settings_lfs_check.setAccessibleName(
+            "Check Git LFS status again"
+        )
+        self.settings_lfs_check.setToolTip(
+            "Re-read git-lfs and the Git LFS filters now."
+        )
+        self.settings_lfs_check.clicked.connect(
+            lambda: self._refresh_lfs_status(force=True)
+        )
+        lfs_row.addWidget(self.settings_lfs_check)
         lfs_help = QPushButton("Help…")
         lfs_help.setObjectName("Ghost")
         lfs_help.clicked.connect(lambda: self._show_lfs_help())
@@ -843,6 +885,7 @@ class MainWindow(QMainWindow):
                 "Git LFS",
                 "Whether git-lfs is installed and enabled.",
                 lfs_widget,
+                below=True,
             )
         )
         column.addWidget(card)
@@ -987,6 +1030,8 @@ class MainWindow(QMainWindow):
         self.settings_button.setChecked(True)
         if not self._settings_dirty:
             self._populate_settings()
+        else:
+            self._refresh_lfs_status(force=True)
         self.stack.setCurrentWidget(self.settings_page)
         self._select_settings_section(self._settings_section)
         self._save_ui_state()
@@ -1235,13 +1280,7 @@ class MainWindow(QMainWindow):
         self.settings_lfs.setChecked(
             self.config.require_git_lfs_for_lfs_repos
         )
-        status = lfs_status()
-        if not status.installed:
-            self.settings_lfs_status.setText("not installed")
-        else:
-            version = f" · {status.version.split()[0]}" if status.version else ""
-            state = "enabled" if status.enabled else "not enabled"
-            self.settings_lfs_status.setText(f"installed{version} · {state}")
+        self._refresh_lfs_status(force=True)
         self.settings_config_label.setText(
             str(self.config.config_path or "(built-in defaults)")
         )
@@ -1252,6 +1291,9 @@ class MainWindow(QMainWindow):
         )
         auto_on = self.config.auto_refresh_s > 0
         self.settings_auto.setChecked(auto_on)
+        self.settings_hidden_pause.setChecked(
+            self.config.auto_refresh_pause_when_hidden
+        )
         minutes = (
             max(5, round(self.config.auto_refresh_s / 60))
             if auto_on
@@ -1264,6 +1306,63 @@ class MainWindow(QMainWindow):
         self._update_auto_controls()
         self.check_result.setText("")
         self._set_settings_dirty(False)
+
+    def _apply_lfs_status(self, status: LfsStatus) -> None:
+        if not status.installed:
+            self.settings_lfs_status.setText("not installed")
+            return
+        version = f" · {status.version.split()[0]}" if status.version else ""
+        state = "enabled" if status.enabled else "not enabled"
+        self.settings_lfs_status.setText(f"installed{version} · {state}")
+
+    def _refresh_lfs_status(self, *, force: bool = False) -> None:
+        """Re-read Git LFS state; no HDD access and no background watcher."""
+        if (
+            not force
+            and self._lfs_status is not None
+            and self._lfs_status.installed
+            and self._lfs_status.enabled
+        ):
+            return
+        status = lfs_status()
+        self._lfs_status = status
+        self._lfs_last_check = time.monotonic()
+        self._apply_lfs_status(status)
+
+    def _maybe_refresh_lfs_status(self) -> None:
+        """Catch an install completed while Settings stayed open."""
+        if self.stack.currentWidget() is not self.settings_page:
+            return
+        if (
+            self._lfs_status is not None
+            and self._lfs_status.installed
+            and self._lfs_status.enabled
+        ):
+            return
+        if time.monotonic() - self._lfs_last_check < 5.0:
+            return
+        self._refresh_lfs_status()
+
+    def changeEvent(self, event: QEvent) -> None:
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.WindowStateChange:
+            self._resume_after_visible()
+            self._update_tray_tooltip()
+        elif (
+            event.type() == QEvent.Type.ActivationChange
+            and self.isActiveWindow()
+        ):
+            self._maybe_refresh_lfs_status()
+
+    def showEvent(self, event: QShowEvent) -> None:
+        super().showEvent(event)
+        self._resume_after_visible()
+        self._update_tray_tooltip()
+
+    def hideEvent(self, event: QHideEvent) -> None:
+        super().hideEvent(event)
+        self._schedule_auto_refresh()
+        self._update_tray_tooltip()
 
     # ------------------------------------------------------------------ actions
 
@@ -1358,6 +1457,12 @@ class MainWindow(QMainWindow):
         self._sync_behavior_settings()
         self._update_auto_controls()
 
+    def _on_hidden_pause_toggled(self, _checked: bool) -> None:
+        if self._loading_settings:
+            return
+        self._sync_behavior_settings()
+        self._update_auto_controls()
+
     def _on_auto_minutes_changed(self, _value: int) -> None:
         if self._loading_settings:
             return
@@ -1378,10 +1483,12 @@ class MainWindow(QMainWindow):
                 int(self.settings_auto_minutes.value()) * 60
             )
         )
+        pause_hidden = self.settings_hidden_pause.isChecked()
         self.config = dataclasses.replace(
             self.config,
             background_mode=background,
             auto_refresh_s=auto,
+            auto_refresh_pause_when_hidden=pause_hidden,
         )
         target = self.config.config_path
         if target is not None:
@@ -1390,6 +1497,7 @@ class MainWindow(QMainWindow):
                     target,
                     background_mode=background,
                     auto_refresh_s=auto,
+                    auto_refresh_pause_when_hidden=pause_hidden,
                 )
             except OSError as exc:
                 self._set_settings_dirty(True)
@@ -1399,6 +1507,9 @@ class MainWindow(QMainWindow):
 
     def _update_auto_controls(self) -> None:
         self.settings_auto_minutes.setEnabled(True)
+        self.settings_hidden_pause.setEnabled(
+            self.settings_auto.isChecked()
+        )
         warn = self.settings_auto.isChecked() and should_warn(
             self.settings_auto_minutes.value() * 60
         )
@@ -1441,6 +1552,9 @@ class MainWindow(QMainWindow):
                     int(self.settings_auto_minutes.value()) * 60
                 )
             ),
+            auto_refresh_pause_when_hidden=(
+                self.settings_hidden_pause.isChecked()
+            ),
         )
         try:
             save_config(updated, target)
@@ -1480,6 +1594,7 @@ class MainWindow(QMainWindow):
         self.settings_retention.setValue(defaults.log_retention_days)
         self.settings_background.setChecked(False)
         self.settings_auto.setChecked(False)
+        self.settings_hidden_pause.setChecked(False)
         blocker = QSignalBlocker(self.settings_auto_minutes)
         self.settings_auto_minutes.setValue(15)
         del blocker
@@ -1718,9 +1833,49 @@ class MainWindow(QMainWindow):
     def _jitter_seconds(self) -> float:
         return float(random.randint(0, AUTO_REFRESH_JITTER_S))
 
+    def _auto_visible_allowed(self) -> bool:
+        if not self.config.auto_refresh_pause_when_hidden:
+            return True
+        return self.isVisible() and not self.isMinimized()
+
+    def _resume_after_visible(self) -> None:
+        """Resume the normal timer, or catch up one run if it is already due."""
+        if (
+            not self.config.auto_refresh_pause_when_hidden
+            or not self._auto_visible_allowed()
+        ):
+            self._schedule_auto_refresh()
+            return
+        if (
+            self.config.auto_refresh_s <= 0
+            or self._quit_requested
+            or self._auto_paused
+        ):
+            self._schedule_auto_refresh()
+            return
+        now = time.monotonic()
+        due = (
+            self._last_network_finished is not None
+            and cooldown_remaining(
+                self._last_network_finished,
+                now,
+                self.config.auto_refresh_s,
+            )
+            <= 0
+        )
+        if not due or self.task is not None or not self.refs:
+            self._schedule_auto_refresh()
+            return
+        self._start_run(self.refs, force=False, mode="status", auto=True)
+
     def _schedule_auto_refresh(self) -> None:
         if self._auto_pause_action is not None:
             self._auto_pause_action.setEnabled(self.config.auto_refresh_s > 0)
+        if not self._auto_visible_allowed():
+            self.auto_timer.stop()
+            self._resume_timer.stop()
+            self._resume_pending = False
+            return
         if (
             self.config.auto_refresh_s <= 0
             or self._quit_requested
@@ -1751,6 +1906,9 @@ class MainWindow(QMainWindow):
         self.auto_timer.start(int(delay * 1000))
 
     def _auto_refresh_due(self) -> None:
+        if not self._auto_visible_allowed():
+            self._schedule_auto_refresh()
+            return
         if (
             self._quit_requested
             or self.config.auto_refresh_s <= 0
@@ -1791,6 +1949,10 @@ class MainWindow(QMainWindow):
 
     def _on_resume(self, gap_s: float) -> None:
         """Defer one status check until the desktop has settled."""
+        if not self._auto_visible_allowed():
+            self._resume_pending = False
+            self.auto_timer.stop()
+            return
         if (
             self._quit_requested
             or self.config.auto_refresh_s <= 0
@@ -1804,6 +1966,10 @@ class MainWindow(QMainWindow):
         self._flash(f"Resumed after {minutes} min; checking in 60 s…")
 
     def _resume_check_due(self) -> None:
+        if not self._auto_visible_allowed():
+            self._resume_pending = False
+            self._schedule_auto_refresh()
+            return
         if (
             self._quit_requested
             or self.config.auto_refresh_s <= 0
@@ -1824,6 +1990,9 @@ class MainWindow(QMainWindow):
         self._resume_start_run()
 
     def _resume_start_run(self) -> None:
+        if not self._auto_visible_allowed():
+            self._schedule_auto_refresh()
+            return
         if (
             self._quit_requested
             or self.config.auto_refresh_s <= 0
@@ -1846,7 +2015,9 @@ class MainWindow(QMainWindow):
         else:
             text = f"repopull — {self._summary(self.report)}"
         if self.config.auto_refresh_s > 0:
-            if self._network_offline:
+            if not self._auto_visible_allowed():
+                text += "\nAutomatic refresh paused while hidden"
+            elif self._network_offline:
                 text += "\nNetwork unavailable; retrying"
             else:
                 text += "\nAutomatic refresh on"
@@ -1861,6 +2032,9 @@ class MainWindow(QMainWindow):
         auto: bool = False,
     ) -> None:
         if self.task is not None:
+            return
+        if auto and not self._auto_visible_allowed():
+            self._schedule_auto_refresh()
             return
         if not refs:
             self._flash("No repositories to run.")
@@ -1998,6 +2172,7 @@ class MainWindow(QMainWindow):
             message += " · network unavailable"
         self._flash(message)
         self._update_tray_tooltip()
+        self._refresh_lfs_status()
         self._schedule_auto_refresh()
         self._maybe_quit_after_task()
 

@@ -25,6 +25,7 @@ if HAVE_PYSIDE:
     from PySide6.QtWidgets import QApplication
 
     from repopull.config import Config, load_config, save_config
+    from repopull.diagnostics import LfsStatus
     from repopull.gui.rows import row_view, unchecked_view
     from repopull.gui.settings import SETTINGS_SECTIONS
     from repopull.gui.window import MainWindow
@@ -127,6 +128,79 @@ if HAVE_PYSIDE:
                 self.assertFalse(window.save_button.isEnabled())
                 self.assertEqual(
                     window.settings_status.text(), "All changes saved"
+                )
+                window.close()
+
+        def test_lfs_status_refreshes_when_settings_is_active(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                missing = LfsStatus(
+                    installed=False,
+                    enabled=False,
+                    version="",
+                    install_hint="install git-lfs",
+                )
+                ready = LfsStatus(
+                    installed=True,
+                    enabled=True,
+                    version="git-lfs/3.7.0 (GitHub; linux amd64)",
+                    install_hint="install git-lfs",
+                )
+                with patch(
+                    "repopull.gui.window.lfs_status", return_value=missing
+                ):
+                    window = MainWindow(self._config(base, self._tree(base)))
+                    window._show_settings()
+                self.assertEqual(
+                    window.settings_lfs_status.text(), "not installed"
+                )
+
+                window._lfs_last_check = 0.0
+                with patch(
+                    "repopull.gui.window.lfs_status", return_value=ready
+                ) as check:
+                    window._maybe_refresh_lfs_status()
+
+                check.assert_called_once()
+                self.assertEqual(
+                    window.settings_lfs_status.text(),
+                    "installed · git-lfs/3.7.0 · enabled",
+                )
+                window.close()
+
+        def test_lfs_check_again_button_refreshes_status(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                missing = LfsStatus(
+                    installed=False,
+                    enabled=False,
+                    version="",
+                    install_hint="install git-lfs",
+                )
+                ready = LfsStatus(
+                    installed=True,
+                    enabled=False,
+                    version="git-lfs/3.7.0 (GitHub; linux amd64)",
+                    install_hint="install git-lfs",
+                )
+                with patch(
+                    "repopull.gui.window.lfs_status", return_value=missing
+                ):
+                    window = MainWindow(self._config(base, self._tree(base)))
+                    window._show_settings()
+                self.assertEqual(
+                    window.settings_lfs_status.text(), "not installed"
+                )
+
+                with patch(
+                    "repopull.gui.window.lfs_status", return_value=ready
+                ) as check:
+                    window.settings_lfs_check.click()
+
+                check.assert_called_once()
+                self.assertEqual(
+                    window.settings_lfs_status.text(),
+                    "installed · git-lfs/3.7.0 · not enabled",
                 )
                 window.close()
 
@@ -453,6 +527,96 @@ if HAVE_PYSIDE:
                 reloaded = load_config(config_path=config_path)
                 self.assertTrue(reloaded.background_mode)
                 self.assertTrue(window.config.background_mode)
+                window.request_quit()
+
+        def test_hidden_pause_toggle_persists_immediately(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                config_path = base / "config.toml"
+                config = Config(
+                    root=self._tree(base),
+                    log_dir=base / "logs",
+                    delay_between_repos_s=0,
+                    update_submodules=False,
+                    config_path=config_path,
+                )
+                save_config(config, config_path)
+                window = MainWindow(config)
+
+                self.assertFalse(window.settings_hidden_pause.isEnabled())
+                window.settings_auto.setChecked(True)
+                self.assertTrue(window.settings_hidden_pause.isEnabled())
+                window.settings_hidden_pause.setChecked(True)
+
+                reloaded = load_config(config_path=config_path)
+                self.assertTrue(reloaded.auto_refresh_pause_when_hidden)
+                self.assertTrue(window.config.auto_refresh_pause_when_hidden)
+                window.request_quit()
+
+        def test_hidden_pause_stops_and_restarts_scheduler(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                config = dataclasses.replace(
+                    self._config(base, self._tree(base)),
+                    auto_refresh_s=900,
+                    auto_refresh_pause_when_hidden=True,
+                )
+                window = MainWindow(config)
+
+                self.assertFalse(window.auto_timer.isActive())
+                window.show()
+                self.app.processEvents()
+                self.assertTrue(window.auto_timer.isActive())
+
+                window.hide()
+                self.app.processEvents()
+                self.assertFalse(window.auto_timer.isActive())
+
+                window.show()
+                self.app.processEvents()
+                self.assertTrue(window.auto_timer.isActive())
+                window.request_quit()
+
+        def test_hidden_pause_catches_up_after_a_long_hide(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                config = dataclasses.replace(
+                    self._config(base, self._tree(base)),
+                    auto_refresh_s=900,
+                    auto_refresh_pause_when_hidden=True,
+                )
+                window = MainWindow(config)
+                window.show()
+                self.app.processEvents()
+                window.hide()
+                self.app.processEvents()
+                window._last_network_finished = time.monotonic() - 1_000
+
+                with patch.object(window, "_start_run") as start:
+                    window.show()
+                    self.app.processEvents()
+
+                start.assert_called_once()
+                window.request_quit()
+
+        def test_hidden_pause_blocks_a_due_automatic_run(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                config = dataclasses.replace(
+                    self._config(base, self._tree(base)),
+                    auto_refresh_s=900,
+                    auto_refresh_pause_when_hidden=True,
+                )
+                window = MainWindow(config)
+                window.show()
+                self.app.processEvents()
+                window.hide()
+                self.app.processEvents()
+
+                with patch.object(window, "_start_run") as start:
+                    window._auto_refresh_due()
+
+                start.assert_not_called()
                 window.request_quit()
 
         def test_failed_immediate_save_keeps_settings_dirty(self) -> None:
