@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.6 — 2026-11-06
+
+- Remember the last GUI page, sidebar filter, and detail repository across
+  launches in `ui-state.json`; a missing detail repository falls back to the
+  library.
+- Moved the README Troubleshooting and Limitations sections into
+  [docs/troubleshooting.md](docs/troubleshooting.md) and
+  [docs/limitations.md](docs/limitations.md), and registered both in the
+  documentation index.
+
 ## 0.4.5 — 2026-11-06
 
 - Removed the duplicate numeric commit column from library rows. The status

@@ -77,6 +77,7 @@ from repopull.refresh import (
 )
 from repopull.report import check_log_dir, load_latest_report
 from repopull.rootstate import ROOT_STATE_FILE, verify_root_state
+from repopull.uistate import UiState, load_ui_state, save_ui_state
 _ASSETS = Path(__file__).resolve().parent / "assets"
 
 from repopull.sync import (
@@ -145,6 +146,7 @@ class MainWindow(QMainWindow):
         self._discovery_callback: Callable[[], None] | None = None
         self._check_task: DiscoveryTask | None = None
         self._check_generation = 0
+        self._ui_state = load_ui_state(config.config_path)
         self.report: Report | None = load_latest_report(config.log_dir)
         self.rows_by_label: dict[str, Row] = (
             {row.label: row for row in self.report.rows}
@@ -154,7 +156,11 @@ class MainWindow(QMainWindow):
         self.row_widgets: dict[str, RepoRow] = {}
         self.refs: list[RepoRef] = []
         self.discovery_error: str | None = None
-        self.filter = "all"
+        self.filter = (
+            self._ui_state.filter
+            if self._ui_state is not None
+            else "all"
+        )
         self.search = ""
         self.task: RunTask | None = None
         self._quit_requested = False
@@ -203,13 +209,19 @@ class MainWindow(QMainWindow):
         else:
             self._reload_refs()
         self._build()
+        if self.filter in self.nav_buttons:
+            self.nav_buttons[self.filter].setChecked(True)
         self._populate_settings()
         self._render_library()
         self._update_status_block()
         self._apply_background_mode()
         self._schedule_auto_refresh()
+        if self._ui_state is not None and self._ui_state.page == "settings":
+            self._show_settings()
         if discover_async:
             self._start_discovery()
+        elif self._ui_state is not None and self._ui_state.page == "detail":
+            self._restore_detail()
 
     # ---------------------------------------------------------------- layout
 
@@ -730,16 +742,43 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------- navigation
 
+    def _save_ui_state(self) -> None:
+        current = self.stack.currentWidget()
+        if current is self.settings_page:
+            page = "settings"
+            repo = ""
+        elif current is self.detail_page:
+            page = "detail"
+            repo = self.current_label or ""
+        else:
+            page = "library"
+            repo = ""
+        state = UiState(page=page, filter=self.filter, repo=repo)
+        self._ui_state = state
+        save_ui_state(self.config.config_path, state)
+
+    def _restore_detail(self) -> None:
+        state = self._ui_state
+        if state is None or state.page != "detail" or not state.repo:
+            return
+        if any(ref.label == state.repo for ref in self.refs):
+            self._open_detail(state.repo)
+            return
+        self._ui_state = UiState(page="library", filter=self.filter)
+        self._save_ui_state()
+
     def _set_filter(self, key: str) -> None:
         self.filter = key
         self.nav_buttons[key].setChecked(True)
         self.stack.setCurrentWidget(self.library_page)
         self._render_library()
+        self._save_ui_state()
 
     def _show_settings(self) -> None:
         self.settings_button.setChecked(True)
         self._populate_settings()
         self.stack.setCurrentWidget(self.settings_page)
+        self._save_ui_state()
 
     def _open_watched_settings(self) -> None:
         """Jump straight to the watched folder field."""
@@ -750,6 +789,7 @@ class MainWindow(QMainWindow):
     def _back_to_library(self) -> None:
         self.stack.setCurrentWidget(self.library_page)
         self._render_library()
+        self._save_ui_state()
 
     def _on_search(self, text: str) -> None:
         self.search = text.strip()
@@ -815,6 +855,7 @@ class MainWindow(QMainWindow):
         self._render_library()
         self._update_status_block()
         self._schedule_auto_refresh()
+        self._restore_detail()
         callback = self._discovery_callback
         self._discovery_callback = None
         if callback is not None and not self._quit_requested:
@@ -1059,6 +1100,7 @@ class MainWindow(QMainWindow):
                 "No saved result yet. Use Refresh status."
             )
         self.stack.setCurrentWidget(self.detail_page)
+        self._save_ui_state()
 
     def _lfs_help_current(self) -> None:
         ref = self._current_ref()

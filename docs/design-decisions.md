@@ -390,4 +390,21 @@ intentional disk replacement or a deliberately emptied root requires removing
 detect a change if the log directory is on the same missing disk. Smoke tests
 and screenshots keep synchronous discovery so their output stays deterministic.
 
+## 29. Remember the last GUI page and filter
+
+**Context:** The GUI is a monitor used over many sessions. Always reopening on
+an unfiltered All view loses the user's working context, especially when they
+left it watching the Behind or Errors view or had Settings open.
+
+**Decision:** Persist the page (`library`, `settings`, or `detail`), sidebar
+filter, and detail label in `ui-state.json` next to `config.toml`. Save on every
+navigation, not only on quit, so a crash or task-manager kill retains the last
+view. Restore the filter and Settings page immediately; restore a detail page
+only if its repository is still present, otherwise fall back to the library.
+
+**Consequences:** Relaunching returns to the working view without hiding the
+primary library behind a stale detail page. The state file is small and
+best-effort; a malformed or unwritable file is ignored. It is deliberately not
+in `config.toml`, so UI preferences do not become operator configuration.
+
 For the full documentation index, see [README.md](../README.md#documentation-index).

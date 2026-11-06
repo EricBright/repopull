@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "repopull"
-version = "0.4.5"
+version = "0.4.6"
 description = "Keep local mirrors of watched third-party repositories current with their remotes."
 readme = "README.md"
 requires-python = ">=3.11"

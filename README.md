@@ -12,7 +12,7 @@ The app watches a folder of remote third-party repositories. Then it discovers t
 
 ## Status
 
-**Current release: 0.4.5.** Tests and mypy pass; the latest AppImage is built
+**Current release: 0.4.6.** Tests and mypy pass; the latest AppImage is built
 from this checkout. No release blockers. Remaining test-coverage work is in the
 [test audit](docs/test-falsifiability.md); the 16 px icon keeps its branches at
 the cost of softness (see [branding](docs/branding.md)).
@@ -134,14 +134,14 @@ importable, otherwise it lets `uv` provide it for that run.
 
 ```bash
 make appimage
-./dist/repopull-0.4.5-x86_64.AppImage
+./dist/repopull-0.4.6-x86_64.AppImage
 ```
 
 The image bundles Python 3.13, PySide6 and repopull. Run the CLI from it with
 `--cli`:
 
 ```bash
-./dist/repopull-0.4.5-x86_64.AppImage --cli status
+./dist/repopull-0.4.6-x86_64.AppImage --cli status
 ```
 
 It keeps `config.toml` and logs in `~/.config/repopull` (or `$REPOPULL_HOME`).
@@ -240,7 +240,7 @@ make test        # unit and integration tests, offline, uses temp repos
 make typecheck   # mypy --strict
 make check       # both
 make gui         # launch the optional PySide6 interface
-make appimage    # build dist/repopull-0.4.5-x86_64.AppImage
+make appimage    # build dist/repopull-0.4.6-x86_64.AppImage
 make bump        # increment the patch version
 make release     # check, bump the patch, build the AppImage
 ```
@@ -267,6 +267,8 @@ Runtime is Python 3.11+ with **no third-party packages**. Type checking needs
 | [docs/architecture.md](docs/architecture.md) | Maintainer | on-demand | changing the core or tests | Modules, state model, sync flow, test map |
 | [docs/configuration.md](docs/configuration.md) | Operator | on-demand | changing settings or CLI behaviour | Keys, environment, commands, exit codes |
 | [docs/gui.md](docs/gui.md) | Operator | on-demand | using the desktop interface | Window, settings, LFS help |
+| [docs/troubleshooting.md](docs/troubleshooting.md) | Operator | on-demand | a run fails or a repository is skipped | Common failures and repairs |
+| [docs/limitations.md](docs/limitations.md) | Operator | on-demand | deciding whether repopull fits | What it does not do |
 | [docs/packaging.md](docs/packaging.md) | Maintainer | on-demand | building or debugging the AppImage | Build, runtime, pins, layout |
 | [docs/branding.md](docs/branding.md) | Maintainer | on-demand | changing or regenerating icons | Mark, optical cuts, assets, rebuild |
 | [docs/design-decisions.md](docs/design-decisions.md) | Domain expert | on-demand | asking why, or weighing an alternative | Decision records and rejected paths |
@@ -274,58 +276,6 @@ Runtime is Python 3.11+ with **no third-party packages**. Type checking needs
 | [docs/test-falsifiability.md](docs/test-falsifiability.md) | Maintainer | on-demand | assessing test strength or coverage | Mutation/sabotage audit at 0.2.3 |
 | [docs/auto-refresh-plan.md](docs/auto-refresh-plan.md) | Maintainer | on-demand | reviewing the shipped 0.4.3 resident refresh/tray work | Historical 0.4.3 plan and session handoff |
 | [workflows/watched-repo-sync.md](workflows/watched-repo-sync.md) | Operator | on-demand | implementing or operating the sync loop | Loop spec, safety rules, acceptance |
-
-## Troubleshooting
-
-**A repo reports "empty repository: no commits".**
-It is an incomplete clone (no objects, no refs). Re-clone it, or repair it with
-the repo's actual branch:
-
-```bash
-git -C <path-to-repo> fetch origin
-git -C <path-to-repo> reset --hard origin/<branch>
-```
-
-**A repo reports "uses Git LFS but git-lfs is not installed" or "not enabled".**
-Git LFS stores large files outside normal Git history. In the GUI, open
-**Settings → Updates → Git LFS → Help…** for the install command for your
-distribution; then run `git lfs install` once and click **Refresh status**.
-From the CLI:
-
-```bash
-brew install git-lfs      # Bazzite/Fedora atomic; use your package manager elsewhere
-git lfs install
-./repopull.sh status
-```
-
-Until then the repo is skipped on purpose: checking it out without LFS would
-replace its images with pointer text.
-
-**A repo is skipped as "dirty" or "diverged".**
-Inspect it (`git -C <repo> status`, `git -C <repo> log --oneline @{u}..`), then use
-**Force sync** if the local state is incidental. The user never edits these repos,
-so force is usually the right repair.
-
-**"another repopull run is in progress".**
-A previous run still holds `logs/.lock`. Wait for it, or check for a stuck
-`repopull` process.
-
-**"watched root does not exist" / `where` says `MISSING`.**
-The watched disk is probably not mounted, or the folder moved. Run
-`./repopull.sh where` to see the exact path and where it came from, then either
-mount the disk, copy [`config.example.toml`](config.example.toml) to
-`config.toml`, and edit `root`, or run with `--root PATH` for one run.
-`repopull` prints those same steps when it fails.
-
-## Limitations
-
-- Does not clone missing repositories; it only syncs what exists.
-- Does not switch branches or fetch branches other than the current tracking branch.
-- Does not install `git-lfs`.
-- The CLI has no scheduler; the GUI's status-only automatic refresh runs only while the app is running.
-- No desktop notifications; status is in the window, tray, and logs.
-- The GUI is still a dark-only prototype, with no per-repository normal-sync selection.
-- Not intended for repositories you own or contribute to, since there is no push path.
 
 ## License
 

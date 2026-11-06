@@ -388,6 +388,69 @@ if HAVE_PYSIDE:
                 start.assert_called_once()
                 window.request_quit()
 
+        def test_remembers_settings_page(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = self._tree(base)
+                config = Config(
+                    root=root,
+                    log_dir=base / "logs",
+                    delay_between_repos_s=0,
+                    update_submodules=False,
+                    config_path=base / "config.toml",
+                )
+                window = MainWindow(config)
+                window._show_settings()
+                window.request_quit()
+
+                restored = MainWindow(config)
+                self.assertIs(
+                    restored.stack.currentWidget(), restored.settings_page
+                )
+                restored.request_quit()
+
+        def test_remembers_filter(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = self._tree(base)
+                config = Config(
+                    root=root,
+                    log_dir=base / "logs",
+                    delay_between_repos_s=0,
+                    update_submodules=False,
+                    config_path=base / "config.toml",
+                )
+                window = MainWindow(config)
+                window._set_filter("behind")
+                window.request_quit()
+
+                restored = MainWindow(config)
+                self.assertEqual(restored.filter, "behind")
+                self.assertTrue(restored.nav_buttons["behind"].isChecked())
+                restored.request_quit()
+
+        def test_remembers_detail_selection(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = self._tree(base)
+                config = Config(
+                    root=root,
+                    log_dir=base / "logs",
+                    delay_between_repos_s=0,
+                    update_submodules=False,
+                    config_path=base / "config.toml",
+                )
+                window = MainWindow(config)
+                window._open_detail("alpha")
+                window.request_quit()
+
+                restored = MainWindow(config)
+                self.assertIs(
+                    restored.stack.currentWidget(), restored.detail_page
+                )
+                self.assertEqual(restored.current_label, "alpha")
+                restored.request_quit()
+
         def test_settings_folder_check_is_backgrounded(self) -> None:
             with tempfile.TemporaryDirectory() as tmp:
                 base = Path(tmp)
