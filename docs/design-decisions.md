@@ -481,4 +481,28 @@ the other refresh behavior and is written immediately, like background mode.
 See [configuration.md](configuration.md#automatic-refresh) and
 [gui.md](gui.md#settings).
 
+## 33. Automatic-refresh decisions are a pure table
+
+**Context:** The automatic timer has to account for visibility, the
+pause-when-hidden option, manual pause, suspend/resume, an in-flight run, a
+network retry ladder, the remaining cooldown, and an empty repository list.
+Those conditions had spread across `_schedule_auto_refresh`,
+`_auto_refresh_due`, and `_resume_after_visible`, making the combined behavior
+hard to see and easy to regress.
+
+**Decision:** Move the decision into `refresh.py` as a pure
+`decide_refresh(state, event)` function with three events (`SCHEDULE`, `TIMER`,
+`SHOW`) and three actions (`STOP`, `WAIT`, `RUN`). `MainWindow` builds a
+`RefreshState` snapshot and applies the decision; it no longer duplicates the
+conditions. `SCHEDULE` starts a fresh interval, `TIMER` rechecks the cooldown
+and runs when due, and `SHOW` catches up only when pause-when-hidden is on and
+the interval is already due. A pending resume leaves the grace timer alone; no
+repositories waits for the interval or network retry, not a tight loop.
+
+**Consequences:** The decision table is exercised directly without Qt or real
+timers, and future refresh changes have one place to reason about. The window
+still owns the timers and the run itself, so the seam is the state snapshot and
+the three actions. See [configuration.md](configuration.md#automatic-refresh)
+and [gui.md](gui.md#settings).
+
 For the full documentation index, see [README.md](../README.md#documentation-index).

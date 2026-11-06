@@ -80,10 +80,13 @@ from repopull.refresh import (
     AUTO_REFRESH_JITTER_S,
     SUSPEND_POLL_INTERVAL_S,
     SUSPEND_RESUME_GRACE_S,
+    RefreshAction,
+    RefreshDecision,
+    RefreshEvent,
+    RefreshState,
     SuspendDetector,
     clamp_auto_refresh_s,
-    cooldown_remaining,
-    next_delay,
+    decide_refresh,
     should_warn,
 )
 from repopull.report import check_log_dir, load_latest_report
@@ -1842,105 +1845,65 @@ class MainWindow(QMainWindow):
             return True
         return self.isVisible() and not self.isMinimized()
 
-    def _resume_after_visible(self) -> None:
-        """Resume the normal timer, or catch up one run if it is already due."""
-        if (
-            not self.config.auto_refresh_pause_when_hidden
-            or not self._auto_visible_allowed()
-        ):
-            self._schedule_auto_refresh()
-            return
-        if (
-            self.config.auto_refresh_s <= 0
-            or self._quit_requested
-            or self._auto_paused
-        ):
-            self._schedule_auto_refresh()
-            return
-        now = time.monotonic()
-        due = (
-            self._last_network_finished is not None
-            and cooldown_remaining(
-                self._last_network_finished,
-                now,
-                self.config.auto_refresh_s,
-            )
-            <= 0
+    def _refresh_state(self) -> RefreshState:
+        return RefreshState(
+            interval_s=self.config.auto_refresh_s,
+            quitting=self._quit_requested,
+            paused=self._auto_paused,
+            window_available=self.isVisible() and not self.isMinimized(),
+            pause_when_hidden=self.config.auto_refresh_pause_when_hidden,
+            in_flight=self.task is not None,
+            has_repos=bool(self.refs),
+            network_offline=self._network_offline,
+            failures=self._auto_failures,
+            last_finished=self._last_network_finished,
+            resume_pending=self._resume_pending,
+            now=time.monotonic(),
         )
-        if not due or self.task is not None or not self.refs:
-            self._schedule_auto_refresh()
+
+    def _apply_refresh_decision(self, decision: RefreshDecision) -> None:
+        if decision.clear_resume:
+            self._resume_timer.stop()
+            self._resume_pending = False
+        if decision.action is RefreshAction.STOP:
+            self.auto_timer.stop()
             return
+        if decision.action is RefreshAction.WAIT:
+            self.auto_timer.start(max(1, int(decision.delay_s * 1000)))
+            return
+        self.auto_timer.stop()
         self._start_run(self.refs, force=False, mode="status", auto=True)
+
+    def _resume_after_visible(self) -> None:
+        """Resume the timer, or catch up one run when the interval is due."""
+        self._apply_refresh_decision(
+            decide_refresh(
+                self._refresh_state(),
+                RefreshEvent.SHOW,
+                jitter_s=self._jitter_seconds(),
+            )
+        )
 
     def _schedule_auto_refresh(self) -> None:
         if self._auto_pause_action is not None:
             self._auto_pause_action.setEnabled(self.config.auto_refresh_s > 0)
-        if not self._auto_visible_allowed():
-            self.auto_timer.stop()
-            self._resume_timer.stop()
-            self._resume_pending = False
-            return
-        if (
-            self.config.auto_refresh_s <= 0
-            or self._quit_requested
-            or self._auto_paused
-        ):
-            self.auto_timer.stop()
-            self._resume_timer.stop()
-            self._resume_pending = False
-            return
-        if self._resume_pending:
-            self.auto_timer.stop()
-            return
-        now = time.monotonic()
-        cooldown = cooldown_remaining(
-            self._last_network_finished,
-            now,
-            self.config.auto_refresh_s,
+        self._apply_refresh_decision(
+            decide_refresh(
+                self._refresh_state(),
+                RefreshEvent.SCHEDULE,
+                jitter_s=self._jitter_seconds(),
+            )
         )
-        base = next_delay(
-            self.config.auto_refresh_s,
-            self._auto_failures,
-            network=self._network_offline,
-        )
-        # A network retry is intentionally shorter than the normal cooldown;
-        # the network ladder already prevents a tight retry loop.
-        delay = (base if self._network_offline else max(base, cooldown))
-        delay += self._jitter_seconds()
-        self.auto_timer.start(int(delay * 1000))
 
     def _auto_refresh_due(self) -> None:
-        if not self._auto_visible_allowed():
-            self._schedule_auto_refresh()
-            return
-        if (
-            self._quit_requested
-            or self.config.auto_refresh_s <= 0
-            or self._auto_paused
-        ):
-            return
         self._check_suspend()
-        if self._resume_pending:
-            return
-        if self.task is not None:
-            self.auto_timer.start(60_000)
-            return
-        if not self._network_offline:
-            now = time.monotonic()
-            remaining = cooldown_remaining(
-                self._last_network_finished,
-                now,
-                self.config.auto_refresh_s,
+        self._apply_refresh_decision(
+            decide_refresh(
+                self._refresh_state(),
+                RefreshEvent.TIMER,
+                jitter_s=self._jitter_seconds(),
             )
-            if remaining > 0:
-                self.auto_timer.start(
-                    int((remaining + self._jitter_seconds()) * 1000)
-                )
-                return
-        if not self.refs:
-            self._schedule_auto_refresh()
-            return
-        self._start_run(self.refs, force=False, mode="status", auto=True)
+        )
 
     def _check_suspend(self) -> None:
         detector = self._suspend_detector

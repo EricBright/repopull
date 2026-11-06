@@ -12,6 +12,7 @@ between discovery, git access, decision-making, and presentation.
 | `discovery.py` | Finds `.git` directories at depth 1–2, applies ignore globs. |
 | `git.py` | Typed wrappers around the git CLI; the only place that spawns processes. |
 | `sync.py` | Inspection, fetching, classification, and applying updates. |
+| `refresh.py` | Pure automatic-refresh policy: interval clamping, delays, backoff, suspend detection, and the GUI decision table. |
 | `report.py` | Table rendering, log persistence, JSON serialization. |
 | `rootstate.py` | Remembers the watched root device and repository count. |
 | `uistate.py` | Remembers the last GUI page, filter, and detail selection. |

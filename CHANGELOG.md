@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.10 — 2026-11-06
+
+- Refactored automatic-refresh decisions into a pure `decide_refresh` table in
+  `refresh.py`. Behavior is unchanged; the hidden, pause, cooldown, network,
+  in-flight, resume, and no-repository cases now have direct tests.
+
 ## 0.4.9 — 2026-11-06
 
 - Stop re-reading Git LFS after it is installed and enabled. **Check again** or
