@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QBoxLayout,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -81,6 +82,7 @@ class SettingRow(QWidget):
         self.hint_label.setVisible(bool(hint))
         text_layout.addWidget(self.hint_label)
 
+        layout: QBoxLayout
         if below:
             layout = QVBoxLayout(self)
             layout.setContentsMargins(0, 0, 0, 0)
