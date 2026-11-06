@@ -1,6 +1,6 @@
 # Auto-refresh and system tray plan (0.4.0)
 
-**Status:** approved 2026-11-05; implementation in progress.
+**Status:** implemented in 0.4.0; kept as the plan record.
 **Audience:** maintainers.
 **Purpose:** durable working spec for the resident auto-refresh and tray work.
 When the feature ships, fold the lasting facts into
@@ -121,7 +121,8 @@ Tray:
 - 2026-11-05: Phase 3 complete — Background & refresh settings, symbolic tray
   assets, tray lifecycle, close-to-tray, auto scheduler, single-instance guard.
 - Phase 4 next.
-- 2026-11-05: Phase 4 in progress — final checks, AppImage, and release.
+- 2026-11-05: Phase 4 complete — 114 tests, CI green, AppImage 0.4.0,
+  private release published.
 
 ## Phases
 
