@@ -160,13 +160,20 @@ if HAVE_PYSIDE:
 
         def test_chip_text_and_kind(self) -> None:
             view = row_view(Row("x", "main", Outcome.BEHIND, 12, ""))
-            self.assertIn("12", view.status)
+            self.assertEqual(view.status, "↑ 12 behind")
             self.assertEqual(view.kind, "warn")
 
             updated = row_view(Row("x", "main", Outcome.UPDATED, 1, ""))
-            self.assertEqual(updated.status, "✓ Updated")
+            self.assertEqual(updated.status, "✓ 1 updated")
             self.assertEqual(updated.kind, "ok")
             self.assertEqual(unchecked_view("x").kind, "neutral")
+
+        def test_chip_formats_large_counts(self) -> None:
+            behind = row_view(Row("x", "main", Outcome.BEHIND, 1_234, ""))
+            updated = row_view(Row("x", "main", Outcome.UPDATED, 12_345, ""))
+
+            self.assertEqual(behind.status, "↑ 1,234 behind")
+            self.assertEqual(updated.status, "✓ 12,345 updated")
 
         def test_row_update_applies_in_place(self) -> None:
             with tempfile.TemporaryDirectory() as tmp:
@@ -180,7 +187,12 @@ if HAVE_PYSIDE:
                 self.assertIs(
                     window.rows_by_label["alpha"].outcome, Outcome.UPDATED
                 )
-                self.assertIn("Updated", window.row_widgets["alpha"].chip.text())
+                self.assertIn("3 updated", window.row_widgets["alpha"].chip.text())
+                widths = {
+                    widget.chip.minimumWidth()
+                    for widget in window.row_widgets.values()
+                }
+                self.assertEqual(widths, {152})
                 window.close()
 
         def test_single_repo_sync_keeps_other_status_rows(self) -> None:

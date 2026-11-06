@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.5 — 2026-11-06
+
+- Removed the duplicate numeric commit column from library rows. The status
+  chip now carries the count for both behind and updated rows, with comma
+  separators for large values.
+- All status chips use one fixed width, so counts no longer resize the row.
+
 ## 0.4.4 — 2026-11-06
 
 - Detect resume from suspend with `CLOCK_BOOTTIME` versus `CLOCK_MONOTONIC`;

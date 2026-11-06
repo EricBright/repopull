@@ -32,9 +32,10 @@ window; the empty view says it is scanning until the result arrives.
   last run time, the running version, and the mark beside the wordmark. The full
   path lives in Settings and in the link's tooltip.
 
-- **Library**: one row per repository with its branch, a status chip, the commit
-  count, and the skip or error reason. **Rows update as each repository is
-  checked**, not only when the whole sweep finishes. Search filters by label.
+- **Library**: one row per repository with its branch, a fixed-width status
+  chip carrying the commit count, and the skip or error reason. **Rows update
+  as each repository is checked**, not only when the whole sweep finishes.
+  Search filters by label.
 - **Banner**: "N repositories can be updated" with a **Sync all** button.
 - **Refresh status** fetches and reports without changing any working tree.
 - **Sync all** rechecks every remote, then fast-forwards what is behind. This is

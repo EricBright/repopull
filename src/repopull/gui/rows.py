@@ -20,7 +20,6 @@ class RowView:
     branch: str
     status: str
     kind: str
-    commits: int
     detail: str
 
 
@@ -41,17 +40,22 @@ _CHIP_KIND: dict[Outcome, str] = {
 }
 
 
+def _count(value: int) -> str:
+    return f"{value:,}"
+
+
 def row_view(row: Row) -> RowView:
     """Turn a report row into a display row."""
     status = _CHIP_TEXT[row.outcome]
     if row.outcome is Outcome.BEHIND and row.commits:
-        status = f"↑ {row.commits} behind"
+        status = f"↑ {_count(row.commits)} behind"
+    elif row.outcome is Outcome.UPDATED and row.commits:
+        status = f"✓ {_count(row.commits)} updated"
     return RowView(
         label=row.label,
         branch=row.branch,
         status=status,
         kind=_CHIP_KIND[row.outcome],
-        commits=row.commits,
         detail=row.detail,
     )
 
@@ -63,7 +67,6 @@ def unchecked_view(label: str) -> RowView:
         branch="-",
         status="○ Not checked",
         kind="neutral",
-        commits=0,
         detail="",
     )
 
@@ -94,15 +97,9 @@ class RepoRow(QFrame):
         text.addWidget(self.sub_label)
         layout.addLayout(text, 1)
 
-        self.commits_label = QLabel()
-        self.commits_label.setObjectName("Muted")
-        self.commits_label.setFixedWidth(52)
-        self.commits_label.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-        )
-        layout.addWidget(self.commits_label)
-
         self.chip = QLabel()
+        self.chip.setFixedWidth(152)
+        self.chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.chip)
 
         self.chevron = QLabel("›")
@@ -112,7 +109,6 @@ class RepoRow(QFrame):
         for label in (
             self.name_label,
             self.sub_label,
-            self.commits_label,
             self.chip,
             self.chevron,
         ):
@@ -130,7 +126,6 @@ class RepoRow(QFrame):
         if view.detail:
             subtitle = f"{view.branch} · {view.detail}"
         self.sub_label.setText(subtitle)
-        self.commits_label.setText(str(view.commits) if view.commits else "")
         color = STATUS_COLORS.get(view.kind, STATUS_COLORS["neutral"])
         self.chip.setText(view.status)
         self.chip.setStyleSheet(
