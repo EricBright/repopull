@@ -243,6 +243,7 @@ if HAVE_PYSIDE:
                 window.settings_ignore.setPlainText("skip-me\n*.old")
                 window.settings_fetch_timeout.setValue(600)
                 window.settings_command_timeout.setValue(90)
+                window.settings_retention.setValue(7)
                 window._save_settings()
 
                 reloaded = load_config(config_path=config_path)
@@ -252,6 +253,7 @@ if HAVE_PYSIDE:
                 self.assertEqual(reloaded.ignore, ("skip-me", "*.old"))
                 self.assertEqual(reloaded.fetch_timeout_s, 600)
                 self.assertEqual(reloaded.command_timeout_s, 90)
+                self.assertEqual(reloaded.log_retention_days, 7)
                 window.close()
 
 

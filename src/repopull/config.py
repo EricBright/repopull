@@ -24,6 +24,7 @@ _KNOWN_KEYS: Final[frozenset[str]] = frozenset(
         "update_submodules",
         "require_git_lfs_for_lfs_repos",
         "log_dir",
+        "log_retention_days",
     }
 )
 
@@ -58,6 +59,7 @@ class Config:
     update_submodules: bool = True
     require_git_lfs_for_lfs_repos: bool = True
     log_dir: Path = field(default_factory=lambda: project_home() / "logs")
+    log_retention_days: int = 30
     # Provenance, so the tool can explain where it is pointing and why.
     config_path: Path | None = None
     config_found: bool = False
@@ -88,6 +90,14 @@ def _as_int(value: Any, key: str) -> int:
     if isinstance(value, int) and not isinstance(value, bool):
         if value < 1:
             raise ConfigError(f"{key} must be at least 1")
+        return value
+    raise ConfigError(f"{key} must be an integer")
+
+
+def _as_non_negative_int(value: Any, key: str) -> int:
+    if isinstance(value, int) and not isinstance(value, bool):
+        if value < 0:
+            raise ConfigError(f"{key} must not be negative")
         return value
     raise ConfigError(f"{key} must be an integer")
 
@@ -171,6 +181,9 @@ def load_config(
                 "require_git_lfs_for_lfs_repos",
             ),
             log_dir=log_dir,
+            log_retention_days=_as_non_negative_int(
+                data.get("log_retention_days", 30), "log_retention_days"
+            ),
             config_path=path,
             config_found=path.is_file(),
             root_source=root_source,
@@ -208,6 +221,7 @@ def save_config(config: Config, path: Path) -> None:
             "require_git_lfs_for_lfs_repos = "
             f"{str(config.require_git_lfs_for_lfs_repos).lower()}",
             f"log_dir = {json.dumps(str(config.log_dir))}",
+            f"log_retention_days = {config.log_retention_days}",
             "",
         ]
     )

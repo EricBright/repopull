@@ -11,3 +11,4 @@ delay_between_repos_s = 0.5
 update_submodules = true
 require_git_lfs_for_lfs_repos = true
 log_dir = "logs"
+log_retention_days = 30

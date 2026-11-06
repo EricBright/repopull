@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0 — 2026-11-05
+
+- Run logs older than 30 days are pruned after each run. `log_retention_days`
+  (default 30; `0` keeps forever) is configurable in Settings → Storage.
+- Added GitHub Actions CI: `make check` (mypy + tests) on every push and pull
+  request.
+
 ## 0.2.5 — 2026-11-05
 
 - Restored the B1t branches at every icon size, including 16/22/24 and the

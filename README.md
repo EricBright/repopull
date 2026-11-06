@@ -12,7 +12,7 @@ never pushes, commits, branches, tags, or opens a pull request.
 
 ## Status
 
-**Current release: 0.2.5.** Tests and mypy pass; the latest AppImage is built
+**Current release: 0.3.0.** Tests and mypy pass; the latest AppImage is built
 from this checkout. No release blockers. Remaining test-coverage work is in the
 [test audit](docs/test-falsifiability.md); the 16 px icon keeps its branches at
 the cost of softness (see [branding](docs/branding.md)).
@@ -127,14 +127,14 @@ importable, otherwise it lets `uv` provide it for that run.
 
 ```bash
 make appimage
-./dist/repopull-0.2.5-x86_64.AppImage
+./dist/repopull-0.3.0-x86_64.AppImage
 ```
 
 The image bundles Python 3.13, PySide6 and repopull. Run the CLI from it with
 `--cli`:
 
 ```bash
-./dist/repopull-0.2.5-x86_64.AppImage --cli status
+./dist/repopull-0.3.0-x86_64.AppImage --cli status
 ```
 
 It keeps `config.toml` and logs in `~/.config/repopull` (or `$REPOPULL_HOME`).
@@ -187,6 +187,9 @@ Log: .../logs/20261105-161123-status.log
 ```
 
 Every run writes `logs/YYYYMMDD-HHMMSS-<mode>.log` and `logs/latest.log`.
+Timestamped run logs older than `log_retention_days` (default 30; `0` keeps
+forever) are pruned after each run. `latest.log`, `latest.json`, and `.lock`
+are never pruned; change the value in Settings → Storage.
 
 ## Configuration
 
@@ -200,6 +203,7 @@ max_depth = 2
 delay_between_repos_s = 0.5
 update_submodules = true
 require_git_lfs_for_lfs_repos = true
+log_retention_days = 30
 ```
 
 ## Project layout
@@ -227,7 +231,7 @@ make test        # unit and integration tests, offline, uses temp repos
 make typecheck   # mypy --strict
 make check       # both
 make gui         # launch the optional PySide6 interface
-make appimage    # build dist/repopull-0.2.5-x86_64.AppImage
+make appimage    # build dist/repopull-0.3.0-x86_64.AppImage
 make bump        # increment the patch version
 make release     # check, bump the patch, build the AppImage
 ```

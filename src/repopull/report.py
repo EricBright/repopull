@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import dataclasses
 import json
-from datetime import datetime
+import re
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,7 @@ _COLORS: dict[Outcome, str] = {
 _HEADERS: tuple[str, ...] = ("Repository", "Branch", "Status", "Commits", "Detail")
 _MAX_LABEL = 48
 _MAX_DETAIL = 100
+_RUN_LOG_RE = re.compile(r"(?P<stamp>\d{8}-\d{6})-.+\.log")
 
 
 def _paint(text: str, outcome: Outcome, *, color: bool) -> str:
@@ -110,12 +112,61 @@ def _merged_snapshot(report: Report, log_dir: Path) -> Report:
     return dataclasses.replace(report, rows=tuple(merged.values()))
 
 
-def write_log(report: Report, log_dir: Path) -> Report:
+def prune_logs(
+    log_dir: Path,
+    retention_days: int,
+    *,
+    reference: datetime | None = None,
+) -> int:
+    """Delete timestamped run logs older than `retention_days`.
+
+    `0` disables pruning. Only top-level files matching
+    `YYYYMMDD-HHMMSS-<mode>.log` are considered; `latest.log`, `latest.json`,
+    `.lock`, unrelated files, and symlinks are left alone. Failures are
+    best-effort and never raise.
+    """
+    if retention_days <= 0:
+        return 0
+
+    cutoff = (reference or datetime.now()) - timedelta(days=retention_days)
+    try:
+        entries = list(log_dir.iterdir())
+    except OSError:
+        return 0
+
+    removed = 0
+    for path in entries:
+        if path.is_symlink() or not path.is_file():
+            continue
+        match = _RUN_LOG_RE.fullmatch(path.name)
+        if match is None:
+            continue
+        try:
+            stamp = datetime.strptime(match.group("stamp"), "%Y%m%d-%H%M%S")
+        except ValueError:
+            continue
+        if stamp >= cutoff:
+            continue
+        try:
+            path.unlink()
+        except OSError:
+            continue
+        removed += 1
+    return removed
+
+
+def write_log(
+    report: Report,
+    log_dir: Path,
+    *,
+    retention_days: int = 0,
+) -> Report:
     """Write this run's log plus merged `latest.log` and `latest.json` files.
 
     The timestamped log is exactly this run. The two `latest` files hold the
     last known status for every repository, so a partial sync does not erase the
-    other rows.
+    other rows. With `retention_days > 0`, older timestamped run logs are pruned
+    after the new files are safely written.
     """
     log_dir.mkdir(parents=True, exist_ok=True)
     stamp = report.started_at.strftime("%Y%m%d-%H%M%S")
@@ -132,6 +183,8 @@ def write_log(report: Report, log_dir: Path) -> Report:
         json.dumps(report_to_dict(snapshot), indent=2) + "\n",
         encoding="utf-8",
     )
+    if retention_days > 0:
+        prune_logs(log_dir, retention_days, reference=stamped.started_at)
     return stamped
 
 

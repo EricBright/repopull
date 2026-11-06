@@ -6,8 +6,8 @@
 parser and GUI row mapping. Raw artifacts live in `_temp/` (gitignored).
 
 This audit covered the 0.2.3 suite of 80 tests. Four icon tests, a docs-version
-sync test, and three documentation-system checks were added later; the current
-suite is 88 at 0.2.5.
+sync test, three documentation-system checks, and five log-retention tests were
+added later; the current suite is 93 at 0.3.0.
 
 **Question:** for each test, is there a defect it would catch?
 

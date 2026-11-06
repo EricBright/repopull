@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from datetime import datetime
@@ -11,6 +12,7 @@ from pathlib import Path
 from repopull.models import Outcome, Report, Row
 from repopull.report import (
     load_latest_report,
+    prune_logs,
     render_report,
     report_from_dict,
     report_to_dict,
@@ -106,3 +108,60 @@ class ReportRoundTripTests(unittest.TestCase):
         self.assertIn("Totals: 1 behind, 1 skipped", text)
         self.assertIn("Attention:", text)
         self.assertIn("beta: dirty working tree", text)
+
+
+class LogRetentionTests(unittest.TestCase):
+    def test_prune_logs_keeps_recent_and_non_run_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            log_dir = Path(tmp)
+            old = log_dir / "20200101-120000-status.log"
+            recent = log_dir / "20260101-120000-status.log"
+            latest_log = log_dir / "latest.log"
+            latest_json = log_dir / "latest.json"
+            lock = log_dir / ".lock"
+            unrelated = log_dir / "notes.txt"
+            malformed = log_dir / "20260101-120000.log"
+            outside = log_dir / "outside.txt"
+            link = log_dir / "20200101-130000-sync.log"
+            for path in (old, recent, latest_log, latest_json, lock, unrelated, malformed, outside):
+                path.write_text("x", encoding="utf-8")
+            os.symlink(outside, link)
+
+            removed = prune_logs(
+                log_dir, 30, reference=datetime(2026, 1, 15, 12, 0, 0)
+            )
+
+            self.assertEqual(removed, 1)
+            self.assertFalse(old.exists())
+            self.assertTrue(recent.exists())
+            self.assertTrue(latest_log.exists())
+            self.assertTrue(latest_json.exists())
+            self.assertTrue(lock.exists())
+            self.assertTrue(unrelated.exists())
+            self.assertTrue(malformed.exists())
+            self.assertTrue(link.is_symlink())
+            self.assertTrue(outside.exists())
+
+    def test_prune_logs_is_disabled_at_zero(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            log_dir = Path(tmp)
+            old = log_dir / "20200101-120000-status.log"
+            old.write_text("x", encoding="utf-8")
+
+            self.assertEqual(prune_logs(log_dir, 0), 0)
+            self.assertTrue(old.exists())
+
+    def test_write_log_prunes_old_runs_after_writing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            log_dir = Path(tmp)
+            old = log_dir / "20200101-120000-status.log"
+            old.write_text("x", encoding="utf-8")
+
+            stamped = write_log(_report(), log_dir, retention_days=30)
+
+            self.assertFalse(old.exists())
+            self.assertIsNotNone(stamped.log_path)
+            assert stamped.log_path is not None
+            self.assertTrue(stamped.log_path.exists())
+            self.assertTrue((log_dir / "latest.log").exists())
+            self.assertTrue((log_dir / "latest.json").exists())

@@ -487,6 +487,15 @@ class MainWindow(QMainWindow):
         )
         self.settings_logs_label.setToolTip("Where run reports are saved")
         storage_form.addRow("Logs", self.settings_logs_label)
+
+        self.settings_retention = QSpinBox()
+        self.settings_retention.setRange(0, 3650)
+        self.settings_retention.setSuffix(" days")
+        self.settings_retention.setSpecialValueText("Keep all")
+        self.settings_retention.setToolTip(
+            "Delete run logs older than this; 0 keeps every run log."
+        )
+        storage_form.addRow("Keep run logs", self.settings_retention)
         content_layout.addWidget(storage)
 
         content_layout.addStretch(1)
@@ -714,6 +723,7 @@ class MainWindow(QMainWindow):
             str(self.config.config_path or "(built-in defaults)")
         )
         self.settings_logs_label.setText(str(self.config.log_dir))
+        self.settings_retention.setValue(self.config.log_retention_days)
         self.check_result.setText("")
 
     # ------------------------------------------------------------------ actions
@@ -803,6 +813,7 @@ class MainWindow(QMainWindow):
             delay_between_repos_s=float(self.settings_delay.value()),
             update_submodules=self.settings_submodules.isChecked(),
             require_git_lfs_for_lfs_repos=self.settings_lfs.isChecked(),
+            log_retention_days=int(self.settings_retention.value()),
         )
         try:
             save_config(updated, target)
@@ -832,6 +843,7 @@ class MainWindow(QMainWindow):
         self.settings_lfs.setChecked(
             defaults.require_git_lfs_for_lfs_repos
         )
+        self.settings_retention.setValue(defaults.log_retention_days)
         self.check_result.setText(
             "Defaults restored; press Save settings to write them."
         )

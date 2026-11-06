@@ -292,7 +292,9 @@ def status_report(
         elapsed_s=time.monotonic() - clock,
         rows=tuple(rows),
     )
-    return write_log(report, config.log_dir)
+    return write_log(
+        report, config.log_dir, retention_days=config.log_retention_days
+    )
 
 
 def sync_report(
@@ -322,4 +324,6 @@ def sync_report(
         elapsed_s=time.monotonic() - clock,
         rows=tuple(rows),
     )
-    return write_log(report, config.log_dir)
+    return write_log(
+        report, config.log_dir, retention_days=config.log_retention_days
+    )

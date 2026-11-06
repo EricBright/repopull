@@ -259,4 +259,20 @@ caption.
 same mark, so the brand stays consistent. The 16 px icon is the compromise: it
 keeps the branches at the cost of some clarity. Assets and regeneration are in
 [branding.md](branding.md).
+## 22. Retention by age, not run count
+
+**Context:** Every status or sync writes a timestamped run log. Without a policy,
+`logs/` grows forever. A run-count cap would keep stale logs for a light user and
+erase useful history for a busy one.
+
+**Decision:** Keep run logs for `log_retention_days` (default 30; `0` keeps
+forever). Prune timestamped logs after a successful write. Only
+`YYYYMMDD-HHMMSS-<mode>.log` is eligible; `latest.log`, `latest.json`, `.lock`,
+unrelated files, and symlinks are never touched.
+
+**Consequences:** Old run logs expire by default; the setting can disable it and
+is exposed in the GUI's Storage section. The latest snapshot and lock survive, so
+the GUI and a running sync are unaffected. See
+[configuration.md](configuration.md#log-retention).
+
 For the full documentation index, see [README.md](../README.md#documentation-index).

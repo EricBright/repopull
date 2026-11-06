@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from repopull.config import (
     Config,
+    ConfigError,
     default_config_path,
     load_config,
     project_home,
@@ -44,6 +45,22 @@ class SaveConfigTests(unittest.TestCase):
 
             self.assertIsNone(loaded.root)
             self.assertEqual(loaded.root_source, "not configured")
+            self.assertEqual(loaded.log_retention_days, 30)
+
+    def test_negative_log_retention_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.toml"
+            path.write_text("log_retention_days = -1\n", encoding="utf-8")
+
+            with self.assertRaises(ConfigError):
+                load_config(config_path=path)
+
+    def test_zero_log_retention_disables_pruning(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.toml"
+            path.write_text("log_retention_days = 0\n", encoding="utf-8")
+
+            self.assertEqual(load_config(config_path=path).log_retention_days, 0)
 
     def test_save_without_root_writes_template(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -72,6 +89,7 @@ class SaveConfigTests(unittest.TestCase):
                 root=base / "repos",
                 log_dir=base / "logs",
                 delay_between_repos_s=1.5,
+                log_retention_days=7,
                 update_submodules=False,
                 require_git_lfs_for_lfs_repos=False,
                 config_path=path,
@@ -84,6 +102,7 @@ class SaveConfigTests(unittest.TestCase):
 
             self.assertEqual(loaded.root, config.root)
             self.assertEqual(loaded.log_dir, config.log_dir)
+            self.assertEqual(loaded.log_retention_days, 7)
             self.assertAlmostEqual(loaded.delay_between_repos_s, 1.5)
             self.assertFalse(loaded.update_submodules)
             self.assertFalse(loaded.require_git_lfs_for_lfs_repos)
