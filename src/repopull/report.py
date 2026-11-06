@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import os
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -112,6 +113,23 @@ def _merged_snapshot(report: Report, log_dir: Path) -> Report:
     return dataclasses.replace(report, rows=tuple(merged.values()))
 
 
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Write text through a same-directory temp file and atomic replace."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    try:
+        with temporary.open("w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        try:
+            temporary.unlink()
+        except OSError:
+            pass
+
+
 def prune_logs(
     log_dir: Path,
     retention_days: int,
@@ -174,14 +192,14 @@ def write_log(
     stamped = dataclasses.replace(report, log_path=path)
 
     run_text = render_report(stamped, color=False) + "\n"
-    path.write_text(run_text, encoding="utf-8")
+    _atomic_write_text(path, run_text)
 
     snapshot = _merged_snapshot(stamped, log_dir)
     snapshot_text = render_report(snapshot, color=False) + "\n"
-    (log_dir / "latest.log").write_text(snapshot_text, encoding="utf-8")
-    (log_dir / "latest.json").write_text(
+    _atomic_write_text(log_dir / "latest.log", snapshot_text)
+    _atomic_write_text(
+        log_dir / "latest.json",
         json.dumps(report_to_dict(snapshot), indent=2) + "\n",
-        encoding="utf-8",
     )
     if retention_days > 0:
         prune_logs(log_dir, retention_days, reference=stamped.started_at)

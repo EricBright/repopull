@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import signal
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -66,6 +67,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     app.setWindowIcon(build_app_icon())
     app.setStyle("Fusion")
     app.setStyleSheet(stylesheet())
+    app.setQuitOnLastWindowClosed(False)
 
     try:
         config = load_config(config_path=args.config, root_override=args.root)
@@ -73,24 +75,50 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"repopull-gui: {exc}", file=sys.stderr)
         return 2
 
-    window = MainWindow(config)
+    try:
+        config.log_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        print(
+            f"repopull-gui: cannot create log directory: {exc}",
+            file=sys.stderr,
+        )
+        return 2
 
-    if args.screenshot is not None:
+    from PySide6.QtCore import QLockFile
+    from PySide6.QtWidgets import QMessageBox
+
+    instance = QLockFile(str(config.log_dir / ".gui.lock"))
+    if not instance.tryLock(100):
+        QMessageBox.warning(None, "repopull", "repopull is already running.")
+        return 1
+
+    try:
+        window = MainWindow(config)
+
+        def request_quit(*_args: object) -> None:
+            window.close()
+
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            signal.signal(sig, request_quit)
+
+        if args.screenshot is not None:
+            window.show()
+            app.processEvents()
+            if not window.grab().save(str(args.screenshot)):
+                print(
+                    f"repopull-gui: could not write {args.screenshot}",
+                    file=sys.stderr,
+                )
+                return 2
+            return 0
+
+        if args.smoke_test:
+            window.show()
+            app.processEvents()
+            print(f"GUI smoke test: {window.visible_row_count()} rows visible")
+            return 0
+
         window.show()
-        app.processEvents()
-        if not window.grab().save(str(args.screenshot)):
-            print(
-                f"repopull-gui: could not write {args.screenshot}",
-                file=sys.stderr,
-            )
-            return 2
-        return 0
-
-    if args.smoke_test:
-        window.show()
-        app.processEvents()
-        print(f"GUI smoke test: {window.visible_row_count()} rows visible")
-        return 0
-
-    window.show()
-    return int(app.exec())
+        return int(app.exec())
+    finally:
+        instance.unlock()

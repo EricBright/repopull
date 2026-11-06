@@ -50,6 +50,7 @@ class ReportRoundTripTests(unittest.TestCase):
             self.assertEqual(loaded, stamped)
             self.assertTrue((log_dir / "latest.json").is_file())
             self.assertTrue((log_dir / "latest.log").is_file())
+            self.assertEqual(list(log_dir.glob(".*.tmp")), [])
 
     def test_malformed_json_is_ignored(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

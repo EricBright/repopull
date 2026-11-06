@@ -20,3 +20,12 @@ class RunLockTests(unittest.TestCase):
                 with self.assertRaises(runtime.LockError):
                     with runtime.run_lock(log_dir):
                         pass
+
+    def test_leftover_lock_file_does_not_block(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            log_dir = Path(tmp) / "logs"
+            log_dir.mkdir(parents=True)
+            (log_dir / ".lock").write_text("stale content", encoding="utf-8")
+
+            with runtime.run_lock(log_dir):
+                self.assertTrue((log_dir / ".lock").is_file())

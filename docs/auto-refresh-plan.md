@@ -110,6 +110,12 @@ Tray:
   `gc`/`tracemalloc`.
 - Do not retain report history in memory beyond the current/latest snapshot.
 
+## Progress
+
+- 2026-11-05: Phase 1 complete — atomic report writes, lock regression
+  coverage, graceful close/quit, single-instance guard.
+- Phase 2 next.
+
 ## Phases
 
 1. **Durable lifecycle:** atomic report writes, lock regression test, graceful

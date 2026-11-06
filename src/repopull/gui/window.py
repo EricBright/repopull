@@ -7,9 +7,10 @@ from pathlib import Path
 from threading import Event
 
 from PySide6.QtCore import QSize, Qt, QThreadPool
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QCloseEvent, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QButtonGroup,
     QCheckBox,
     QDoubleSpinBox,
@@ -77,6 +78,7 @@ class MainWindow(QMainWindow):
         self.filter = "all"
         self.search = ""
         self.task: RunTask | None = None
+        self._quit_requested = False
         self.current_label: str | None = None
 
         self.setWindowTitle("repopull")
@@ -923,6 +925,33 @@ class MainWindow(QMainWindow):
             (ref for ref in self.refs if ref.label == self.current_label), None
         )
 
+    def closeEvent(self, event: QCloseEvent) -> None:
+        """Cancel an active run before quitting; never kill git mid-step."""
+        if self._quit_requested:
+            if self.task is not None:
+                event.ignore()
+            else:
+                event.accept()
+            return
+        self._quit_requested = True
+        if self.task is not None:
+            self.task.cancel.set()
+            self.cancel_button.setEnabled(False)
+            self._flash("Stopping after the current repository…")
+            event.ignore()
+            return
+        event.accept()
+        self._quit_application()
+
+    def _quit_application(self) -> None:
+        app = QApplication.instance()
+        if app is not None:
+            app.quit()
+
+    def _maybe_quit_after_task(self) -> None:
+        if self._quit_requested:
+            self._quit_application()
+
     def _start_run(
         self, refs: list[RepoRef], *, force: bool, mode: str
     ) -> None:
@@ -1037,6 +1066,7 @@ class MainWindow(QMainWindow):
         self._render_library()
         self._update_status_block()
         self._flash(self._summary(report))
+        self._maybe_quit_after_task()
 
     def _on_cancelled(self, report: object) -> None:
         if isinstance(report, Report):
@@ -1048,11 +1078,15 @@ class MainWindow(QMainWindow):
         self._render_library()
         self._update_status_block()
         self._flash("Cancelled")
+        self._maybe_quit_after_task()
 
     def _on_failed(self, message: str) -> None:
         self.task = None
         self._set_busy(False)
         self._flash("Run failed")
+        if self._quit_requested:
+            self._maybe_quit_after_task()
+            return
         QMessageBox.warning(self, "repopull", message)
 
     def _summary(self, report: Report) -> str:
