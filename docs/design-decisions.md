@@ -364,10 +364,10 @@ are removed from the child environment.
 **Consequences:** Local hooks no longer fire during a repopull run, including
 hooks a user may have installed in a watched repo. LFS smudge filters and
 submodule commands still run; this is not a full sandbox. It closes the easiest
-local-code-execution path without changing the fetch/fast-forward contract. A
-SIGKILL of repopull itself can still leave git running; the process-group kill
-covers normal cancellation and timeouts, but a safe parent-death signal would
-need a helper or an unsafe `preexec_fn`. See
+local-code-execution path without changing the fetch/fast-forward contract. On Linux, when `setpriv` is available and supports
+`--pdeathsig`, git is launched through `setpriv --pdeathsig TERM -- git`, so a
+SIGKILL of repopull sends SIGTERM to git as well. Otherwise repopull falls back
+to direct git and the SIGKILL-parent gap remains. See
 [configuration.md](configuration.md#environment-variables).
 
 ## 28. Discovery is asynchronous and remembers the root device

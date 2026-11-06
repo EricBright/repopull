@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.4 — 2026-11-06
 
 - Detect resume from suspend with `CLOCK_BOOTTIME` versus `CLOCK_MONOTONIC`;
   wait 60 seconds for the desktop and network to settle, then run one status
@@ -12,6 +12,8 @@
   repo-locating `GIT_*` variables before every call. Hooks and `core.fsmonitor`
   are disabled for these calls. A cancelled command may leave a repo locked or
   partially checked out; the next run reports it.
+- Launch git through `setpriv --pdeathsig TERM` when available, so SIGKILLing
+  repopull also terminates its git process.
 - Redact URL credentials from git errors, fsync config writes, and reject a
   watched root that is not writable or has less than 64 MiB free.
 - Remember the watched root device and repo count in `logs/root-state.json`;

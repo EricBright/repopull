@@ -87,7 +87,9 @@ Repo-locating variables (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`, and the
 object/config equivalents) are removed before every git call, so launching
 repopull from a Git hook or IDE cannot redirect it to another repository. Git
 hooks and `core.fsmonitor` are disabled for these calls; URL userinfo in git
-errors is replaced with `***` before it reaches a log.
+errors is replaced with `***` before it reaches a log. On Linux, git is launched
+through `setpriv --pdeathsig TERM` when `setpriv` supports it, so a SIGKILL of
+repopull also terminates git; otherwise the direct launch is used.
 
 ## Command line
 

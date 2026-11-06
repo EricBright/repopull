@@ -19,6 +19,29 @@ from pathlib import Path
 from threading import Event
 
 _ASKPASS = "/bin/true" if Path("/bin/true").exists() else "true"
+_SETPRIV = shutil.which("setpriv")
+_SETPRIV_SUPPORTED: bool | None = None
+
+
+def _parent_death_launcher() -> tuple[str, ...]:
+    """Return a setpriv prefix when this host supports --pdeathsig."""
+    global _SETPRIV_SUPPORTED
+    if _SETPRIV is None:
+        return ()
+    if _SETPRIV_SUPPORTED is None:
+        try:
+            probe = subprocess.run(
+                [_SETPRIV, "--pdeathsig", "TERM", "--", _ASKPASS],
+                capture_output=True,
+                timeout=2,
+                check=False,
+            )
+            _SETPRIV_SUPPORTED = probe.returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
+            _SETPRIV_SUPPORTED = False
+    if not _SETPRIV_SUPPORTED:
+        return ()
+    return (_SETPRIV, "--pdeathsig", "TERM", "--")
 
 _CREDENTIALS = re.compile(
     r"([a-zA-Z][a-zA-Z0-9+.-]*://)([^/@\s]+)@"
@@ -160,6 +183,7 @@ def run_git(
 ) -> GitResult:
     """Run `git -C <repo> <args...>` and capture its output."""
     command = (
+        *_parent_death_launcher(),
         "git",
         "-c",
         "core.hooksPath=/dev/null",

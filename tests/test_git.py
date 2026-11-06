@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -104,6 +106,66 @@ class EnvironmentTests(unittest.TestCase):
 
 @unittest.skipUnless(sys.platform.startswith("linux"), "process groups are POSIX")
 class ProcessGroupTests(unittest.TestCase):
+    @unittest.skipUnless(
+        shutil.which("setpriv"), "setpriv is needed for parent-death testing"
+    )
+    def test_sigkill_of_parent_stops_git(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            repo = base / "repo"
+            repo.mkdir()
+            fake_bin = base / "bin"
+            fake_bin.mkdir()
+            pid_file = base / "child.pid"
+            fake_git = fake_bin / "git"
+            fake_git.write_text(
+                "#!/bin/sh\n"
+                "echo $$ > \"$PIDFILE\"\n"
+                "exec sleep 30\n",
+                encoding="utf-8",
+            )
+            fake_git.chmod(0o755)
+            parent_code = (
+                "import sys\n"
+                "from pathlib import Path\n"
+                "from repopull.git import run_git\n"
+                "run_git(Path(sys.argv[1]), 'fetch', timeout=30, "
+                "env={'PATH': sys.argv[2], 'PIDFILE': sys.argv[3]})\n"
+            )
+            parent = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-c",
+                    parent_code,
+                    str(repo),
+                    f"{fake_bin}:/usr/bin:/bin",
+                    str(pid_file),
+                ],
+                start_new_session=True,
+            )
+            try:
+                for _ in range(100):
+                    if pid_file.exists() and pid_file.read_text().strip():
+                        break
+                    time.sleep(0.02)
+                else:
+                    self.fail("git child did not start")
+                child = int(pid_file.read_text(encoding="utf-8").strip())
+                parent.kill()
+                parent.wait()
+                for _ in range(60):
+                    try:
+                        os.kill(child, 0)
+                    except ProcessLookupError:
+                        break
+                    time.sleep(0.05)
+                else:
+                    self.fail(f"git child {child} survived parent SIGKILL")
+            finally:
+                if parent.poll() is None:
+                    parent.kill()
+                    parent.wait()
+
     def test_cancel_stops_the_git_child_process(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
