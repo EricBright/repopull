@@ -66,11 +66,12 @@ active run is never overlapped, and failures double the next delay up to one
 hour. The GUI edits minutes, warns below 15 minutes, and uses a hard 5-minute
 floor.
 
-A status run reads each repository's `.git` directory and may spin up an
-external USB hard disk. Automatic refresh is off by default for that reason.
-If the watched root is on a spinning disk, prefer an interval measured in hours
-and use **Refresh status** when you sit down; repopull does not change the
-disk's power-management settings.
+A status run reads each repository's `.git` directory and may wake a spinning
+hard disk, whether it is internal or external. SSDs and NVMe drives do not have
+that spin-up cost. Automatic refresh is off by default for that reason. If the
+watched root is on a hard disk, prefer an interval measured in hours and use
+**Refresh status** when you sit down; repopull does not change the disk's
+power-management settings.
 
 `auto_refresh_pause_when_hidden = true` stops the automatic timer when the
 window is closed to the tray or minimized. No automatic fetch, network retry, or

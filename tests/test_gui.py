@@ -204,6 +204,31 @@ if HAVE_PYSIDE:
                 )
                 window.close()
 
+        def test_lfs_status_is_not_rechecked_after_ready(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                ready = LfsStatus(
+                    installed=True,
+                    enabled=True,
+                    version="git-lfs/3.7.0 (GitHub; linux amd64)",
+                    install_hint="install git-lfs",
+                )
+                with patch(
+                    "repopull.gui.window.lfs_status", return_value=ready
+                ) as check:
+                    window = MainWindow(self._config(base, self._tree(base)))
+                    window._show_settings()
+                    window._populate_settings()
+                    window._refresh_lfs_status()
+                    window._maybe_refresh_lfs_status()
+
+                check.assert_called_once()
+                self.assertEqual(
+                    window.settings_lfs_status.text(),
+                    "installed · git-lfs/3.7.0 · enabled",
+                )
+                window.close()
+
         def test_settings_sections_keep_drafts_until_saved(self) -> None:
             with tempfile.TemporaryDirectory() as tmp:
                 base = Path(tmp)

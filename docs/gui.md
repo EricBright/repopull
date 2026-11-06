@@ -88,9 +88,9 @@ automatic retries are 2, 5, 15, 30, and 60 minutes, so a reconnect is noticed
 quickly without repeatedly timing out every repository.
 
 **Pause while hidden** is opt-in. It stops automatic checks when the window is
-closed to the tray or minimized, so a background repopull does not wake an
-external drive. Manual runs still work. When the window returns, one check runs
-if the interval is due. In-flight runs are not cancelled.
+closed to the tray or minimized, so a background repopull does not wake a
+spinning hard disk. Manual runs still work. When the window returns, one check
+runs if the interval is due. In-flight runs are not cancelled.
 
 With background mode on, the symbolic tray menu offers Open, Refresh status now,
 Pause/Resume automatic refresh, and Quit. Quit cancels the current git command,
@@ -100,9 +100,11 @@ it rather than forcing a repair. A second GUI launch refuses to start.
 
 The **Git LFS** row shows whether `git-lfs` is installed and enabled; **Help…**
 explains what LFS is and shows the install command for the detected distribution
-plus `git lfs install`. Nothing is installed or run automatically. The status is
-rechecked when Settings is shown, when the window becomes active with Settings
-open, after a run, or with **Check again**; there is no background filesystem
+plus `git lfs install`. Nothing is installed or run automatically. Until LFS is
+installed and enabled, the status is rechecked when Settings is shown, when the
+window becomes active with Settings open, and after a run. Once it is ready,
+repopull stops rechecking it for that session; **Check again** forces a fresh
+read, and the next launch checks once. There is no background filesystem
 watcher. The same help appears on a repository's page when LFS is why it cannot
 sync.
 

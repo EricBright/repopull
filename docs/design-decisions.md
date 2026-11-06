@@ -444,23 +444,26 @@ busy for no user-visible gain.
 
 **Decision:** Re-read LFS status when Settings is shown, when the main window
 becomes active with Settings open, after a run, or with the **Check again**
-button. The activation check is throttled and only repeats while the status is
-missing or not enabled. There is no background watcher, no extra timer, and the
-check does not touch the watched repositories or their disk.
+button, but only until the status is both installed and enabled. Once ready, the
+result is kept for the rest of the session; **Check again** is the escape hatch,
+and a new launch checks once. There is no background watcher, no extra timer,
+and the check does not touch the watched repositories or their disk.
 
 **Consequences:** Installing or enabling `git-lfs` is picked up as soon as the
-user returns to the app with Settings open, or the next time Settings is opened,
-or after the next run. A change made while the app is idle and Settings is
-closed is seen on the next Settings visit. The normal cost is a `which` lookup
-when LFS is absent; checking enabled state reads Git's system and global config
-only. See [gui.md](gui.md#settings).
+user returns to the app with Settings open, opens Settings, or finishes a run.
+Once ready, there are no further reads during that session. Removal or a version
+change is not noticed until **Check again** or the next launch; that is the
+deliberate trade-off for not polling. The normal cost is a `which` lookup when
+LFS is absent; checking enabled state reads Git's system and global config only.
+See [gui.md](gui.md#settings).
 
 ## 32. Automatic refresh can pause while the window is hidden
 
-**Context:** A watched root on an external USB hard disk is woken by every
-status run. With background mode and a short interval, a tray-only app can keep
-spinning the drive up while nobody is using it. The user should be able to keep
-automatic freshness while the window is open without paying that cost all day.
+**Context:** A watched root on a spinning hard disk is woken by every status run;
+the cost applies to internal and external HDDs, not to SSDs or NVMe drives. With
+background mode and a short interval, a tray-only app can keep spinning the
+drive up while nobody is using it. The user should be able to keep automatic
+freshness while the window is open without paying that cost all day.
 
 **Decision:** Add opt-in `auto_refresh_pause_when_hidden`. When enabled, the
 automatic timer stops whenever the main window is not visible or is minimized.
@@ -471,7 +474,7 @@ and an in-flight run is allowed to finish. The default is `false`, so existing
 behavior is unchanged.
 
 **Consequences:** A background repopull can now stay in the tray without waking
-an external drive, at the cost of stale data until the window returns or a
+a spinning hard disk, at the cost of stale data until the window returns or a
 manual refresh is requested. Minimized windows count as hidden; otherwise
 minimizing would bypass the option. The setting lives in `config.toml` beside
 the other refresh behavior and is written immediately, like background mode.

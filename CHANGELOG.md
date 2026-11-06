@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.9 — 2026-11-06
+
+- Stop re-reading Git LFS after it is installed and enabled. **Check again** or
+  a new launch re-reads it; there is no polling.
+- Clarified the automatic-refresh hint: a check may wake a spinning hard disk,
+  whether internal or external; SSDs and NVMe drives do not have that cost.
+
 ## 0.4.8 — 2026-11-06
 
 - Recheck Git LFS status when Settings is shown, when the app window becomes

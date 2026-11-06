@@ -737,7 +737,7 @@ class MainWindow(QMainWindow):
         card.add(
             SettingRow(
                 "Check every",
-                "5-minute floor. Each check may spin up an external drive.",
+                "5-minute floor. Each check may wake a spinning hard disk.",
                 self.settings_auto_minutes,
             )
         )
@@ -1031,7 +1031,7 @@ class MainWindow(QMainWindow):
         if not self._settings_dirty:
             self._populate_settings()
         else:
-            self._refresh_lfs_status(force=True)
+            self._refresh_lfs_status()
         self.stack.setCurrentWidget(self.settings_page)
         self._select_settings_section(self._settings_section)
         self._save_ui_state()
@@ -1280,7 +1280,7 @@ class MainWindow(QMainWindow):
         self.settings_lfs.setChecked(
             self.config.require_git_lfs_for_lfs_repos
         )
-        self._refresh_lfs_status(force=True)
+        self._refresh_lfs_status()
         self.settings_config_label.setText(
             str(self.config.config_path or "(built-in defaults)")
         )
@@ -1316,7 +1316,11 @@ class MainWindow(QMainWindow):
         self.settings_lfs_status.setText(f"installed{version} · {state}")
 
     def _refresh_lfs_status(self, *, force: bool = False) -> None:
-        """Re-read Git LFS state; no HDD access and no background watcher."""
+        """Re-read Git LFS state until it is ready; force is the manual escape.
+
+        "Ready" means installed and enabled. Once ready, the result is kept for
+        the rest of the session unless the user presses Check again.
+        """
         if (
             not force
             and self._lfs_status is not None
