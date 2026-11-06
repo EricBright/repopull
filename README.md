@@ -1,3 +1,5 @@
+![The repopull mark](src/repopull/gui/assets/repopull-512.png)
+
 # repopull
 
 Keep local mirrors of third-party repositories current with their remotes —
