@@ -43,10 +43,11 @@ the library then fills. Nothing is hard-coded into the app.
 - **Detail page** (click a row): path, branch, upstream, ahead/behind, working
   tree, Git LFS, submodules, remote URL, and the last result.
 - **Force sync…** on the detail page resets one repository after a confirmation.
-- **Settings**: grouped into Watching (folder, depth, ignore globs), Network
+- **Settings**: grouped into Watching (folder, depth, ignore globs),
   Background & refresh (tray, automatic status refresh), Network (delay,
-  timeouts), Updates (submodules, LFS), and Storage (logs, retention). Saving writes
-  `config.toml`; **Reset to defaults** restores the shipped values first. The
+  timeouts), Updates (submodules, LFS), and Storage (logs, retention).
+  Background and refresh changes apply immediately; other changes are written by
+  **Save settings**. **Reset to defaults** restores the shipped values first. The
   logs path is resolved at runtime from `$XDG_CONFIG_HOME` (or `~/.config`).
   **Keep run logs** sets `log_retention_days`; `0` keeps every run log.
   **Keep running in the system tray** is close-to-tray; the tray icon is visible

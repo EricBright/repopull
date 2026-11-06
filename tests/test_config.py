@@ -16,6 +16,7 @@ from repopull.config import (
     default_config_path,
     load_config,
     project_home,
+    save_behavior_settings,
     save_config,
 )
 
@@ -139,3 +140,28 @@ class SaveConfigTests(unittest.TestCase):
             self.assertFalse(loaded.update_submodules)
             self.assertFalse(loaded.require_git_lfs_for_lfs_repos)
             self.assertTrue(loaded.config_found)
+
+    def test_save_behavior_preserves_comments_and_other_keys(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.toml"
+            path.write_text(
+                "# keep this comment\n"
+                'root = "/tmp/repos"\n'
+                "background_mode = false\n"
+                "auto_refresh_s = 0\n",
+                encoding="utf-8",
+            )
+
+            save_behavior_settings(
+                path,
+                background_mode=True,
+                auto_refresh_s=600,
+            )
+            text = path.read_text(encoding="utf-8")
+
+            self.assertIn("# keep this comment", text)
+            self.assertIn('root = "/tmp/repos"', text)
+            self.assertIn("background_mode = true", text)
+            self.assertIn("auto_refresh_s = 600", text)
+            self.assertEqual(text.count("background_mode"), 1)
+            self.assertEqual(text.count("auto_refresh_s"), 1)

@@ -331,6 +331,30 @@ if HAVE_PYSIDE:
                 self.assertFalse(window.config.background_mode)
                 window.request_quit()
 
+        def test_background_toggle_persists_immediately(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = self._tree(base)
+                config_path = base / "config.toml"
+                config = Config(
+                    root=root,
+                    log_dir=base / "logs",
+                    delay_between_repos_s=0,
+                    update_submodules=False,
+                    config_path=config_path,
+                )
+                save_config(config, config_path)
+                window = MainWindow(config)
+                window._tray_available = True
+                window.settings_background.setEnabled(True)
+
+                window.settings_background.setChecked(True)
+
+                reloaded = load_config(config_path=config_path)
+                self.assertTrue(reloaded.background_mode)
+                self.assertTrue(window.config.background_mode)
+                window.request_quit()
+
         def test_close_to_tray_hides_instead_of_quitting(self) -> None:
             with tempfile.TemporaryDirectory() as tmp:
                 base = Path(tmp)

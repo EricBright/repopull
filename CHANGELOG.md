@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.3 — 2026-11-05
+
+- Background mode and automatic refresh now apply and persist immediately
+  when toggled; closing to the tray no longer depends on pressing Save.
+  A targeted writer updates only `background_mode` and `auto_refresh_s`,
+  preserving other keys and comments.
+
 ## 0.4.2 — 2026-11-05
 
 - Fixed the invisible unchecked checkbox indicator in the dark theme; both

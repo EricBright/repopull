@@ -1,6 +1,6 @@
 # Auto-refresh and system tray plan (0.4.0)
 
-**Status:** implemented in 0.4.0; 0.4.1 tray/Wayland follow-up; 0.4.2 checkbox cosmetics; kept as the plan record.
+**Status:** implemented in 0.4.0; 0.4.1 tray/Wayland; 0.4.2 checkbox cosmetics; 0.4.3 immediate persistence; kept as the plan record.
 **Audience:** maintainers.
 **Purpose:** durable working spec for the resident auto-refresh and tray work.
 When the feature ships, fold the lasting facts into
@@ -127,6 +127,8 @@ Tray:
   visible while running, Wayland fallback for KDE.
 - 2026-11-05: 0.4.2 cosmetic follow-up — visible checkbox indicators, literal
   ampersand title, and an always-editable interval that enables auto-refresh.
+- 2026-11-05: 0.4.3 — background/auto changes apply and persist immediately;
+  close-to-tray no longer depends on pressing Save.
 
 ## Phases
 

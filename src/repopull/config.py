@@ -252,3 +252,39 @@ def save_config(config: Config, path: Path) -> None:
     temporary = path.with_name(path.name + ".tmp")
     temporary.write_text("\n".join(lines), encoding="utf-8")
     temporary.replace(path)
+
+
+def save_behavior_settings(
+    path: Path,
+    *,
+    background_mode: bool,
+    auto_refresh_s: int,
+) -> None:
+    """Update only the two behavior keys, preserving other lines and comments.
+
+    This is for the checkboxes that must take effect immediately; the full
+    `save_config` rewrite remains behind the Save button.
+    """
+    updates = {
+        "background_mode": str(background_mode).lower(),
+        "auto_refresh_s": str(auto_refresh_s),
+    }
+    lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
+    found: set[str] = set()
+    for index, line in enumerate(lines):
+        stripped = line.lstrip()
+        for key, value in updates.items():
+            if stripped == key or stripped.startswith(key + " ") or stripped.startswith(
+                key + "="
+            ):
+                indent = line[: len(line) - len(stripped)]
+                lines[index] = f"{indent}{key} = {value}"
+                found.add(key)
+    for key, value in updates.items():
+        if key not in found:
+            lines.append(f"{key} = {value}")
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    temporary.replace(path)

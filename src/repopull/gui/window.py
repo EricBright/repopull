@@ -46,6 +46,7 @@ from repopull.config import (
     ConfigError,
     default_config_path,
     load_config,
+    save_behavior_settings,
     save_config,
 )
 from repopull.discovery import DiscoveryError, discover_repos
@@ -92,6 +93,7 @@ class MainWindow(QMainWindow):
         self.search = ""
         self.task: RunTask | None = None
         self._quit_requested = False
+        self._loading_settings = False
         self._tray_available = QSystemTrayIcon.isSystemTrayAvailable()
         self.tray: QSystemTrayIcon | None = None
         self.tray_menu: QMenu | None = None
@@ -386,8 +388,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(title)
 
         note = QLabel(
-            "Changes are saved to config.toml. Saving removes comments you "
-            "added to that file."
+            "Background and refresh changes apply immediately. Other changes "
+            "are saved when you press Save settings; saving removes comments "
+            "you added to that file."
         )
         note.setObjectName("Muted")
         note.setWordWrap(True)
@@ -501,6 +504,7 @@ class MainWindow(QMainWindow):
         auto_note.setObjectName("Muted")
         background_form.addRow(auto_note)
 
+        self.settings_background.toggled.connect(self._on_background_toggled)
         self.settings_auto.toggled.connect(self._on_auto_toggled)
         self.settings_auto_minutes.valueChanged.connect(
             self._on_auto_minutes_changed
@@ -785,6 +789,7 @@ class MainWindow(QMainWindow):
             self.last_label.setText("Last run —")
 
     def _populate_settings(self) -> None:
+        self._loading_settings = True
         self.settings_root.setText(
             str(self.config.root) if self.config.root is not None else ""
         )
@@ -824,6 +829,7 @@ class MainWindow(QMainWindow):
         blocker = QSignalBlocker(self.settings_auto_minutes)
         self.settings_auto_minutes.setValue(minutes)
         del blocker
+        self._loading_settings = False
         self._update_auto_controls()
         self.check_result.setText("")
 
@@ -891,13 +897,54 @@ class MainWindow(QMainWindow):
         if chosen:
             self.settings_root.setText(chosen)
 
+    def _on_background_toggled(self, _checked: bool) -> None:
+        if self._loading_settings:
+            return
+        self._sync_behavior_settings()
+
     def _on_auto_toggled(self, _checked: bool) -> None:
+        if self._loading_settings:
+            return
+        self._sync_behavior_settings()
         self._update_auto_controls()
 
     def _on_auto_minutes_changed(self, _value: int) -> None:
+        if self._loading_settings:
+            return
         if not self.settings_auto.isChecked():
             self.settings_auto.setChecked(True)
+            return
+        self._sync_behavior_settings()
         self._update_auto_controls()
+
+    def _sync_behavior_settings(self) -> None:
+        background = (
+            self.settings_background.isChecked() and self._tray_available
+        )
+        auto = (
+            0
+            if not self.settings_auto.isChecked()
+            else clamp_auto_refresh_s(
+                int(self.settings_auto_minutes.value()) * 60
+            )
+        )
+        self.config = dataclasses.replace(
+            self.config,
+            background_mode=background,
+            auto_refresh_s=auto,
+        )
+        target = self.config.config_path
+        if target is not None:
+            try:
+                save_behavior_settings(
+                    target,
+                    background_mode=background,
+                    auto_refresh_s=auto,
+                )
+            except OSError as exc:
+                self._flash(f"Could not save background settings: {exc}")
+        self._apply_background_mode()
+        self._schedule_auto_refresh()
 
     def _update_auto_controls(self) -> None:
         self.settings_auto_minutes.setEnabled(True)
@@ -959,6 +1006,7 @@ class MainWindow(QMainWindow):
         self._flash(f"Saved {target}")
 
     def _reset_settings(self) -> None:
+        self._loading_settings = True
         defaults = Config()
         self.settings_root.setText(str(defaults.root))
         self.settings_max_depth.setValue(defaults.max_depth)
@@ -978,6 +1026,7 @@ class MainWindow(QMainWindow):
         blocker = QSignalBlocker(self.settings_auto_minutes)
         self.settings_auto_minutes.setValue(15)
         del blocker
+        self._loading_settings = False
         self._update_auto_controls()
         self.check_result.setText(
             "Defaults restored; press Save settings to write them."
