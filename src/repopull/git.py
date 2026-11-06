@@ -185,6 +185,8 @@ def run_git(
             stderr=subprocess.PIPE,
             text=True,
             env=_git_env(env),
+            # A new session lets timeout/cancel kill the whole git group. A
+            # SIGKILL of repopull itself is still outside this mechanism.
             start_new_session=True,
         )
     except OSError as exc:

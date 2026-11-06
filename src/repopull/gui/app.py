@@ -97,7 +97,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     try:
-        window = MainWindow(config)
+        window = MainWindow(
+            config,
+            discover_async=not (
+                args.smoke_test or args.screenshot is not None
+            ),
+        )
 
         def request_quit(*_args: object) -> None:
             window.request_quit()

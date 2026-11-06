@@ -20,7 +20,13 @@ from repopull.diagnostics import (
 from repopull.discovery import DiscoveryError, discover_repos
 from repopull.menu import run_menu
 from repopull.models import Outcome, RepoRef
-from repopull.report import load_latest_report, render_report, report_to_dict
+from repopull.report import (
+    check_log_dir,
+    load_latest_report,
+    render_report,
+    report_to_dict,
+)
+from repopull.rootstate import ROOT_STATE_FILE, verify_root_state
 from repopull.runtime import LockError, run_lock
 from repopull.sync import status_report, sync_report
 
@@ -117,6 +123,16 @@ def _select_refs(config: Config, patterns: Sequence[str]) -> list[RepoRef] | Non
         print(missing_root_advice(config), file=sys.stderr)
         return None
 
+    problem = verify_root_state(config.log_dir, root, len(refs))
+    if problem is not None:
+        print(f"repopull: {problem}", file=sys.stderr)
+        print(
+            "repopull: if this is intentional, remove "
+            f"{config.log_dir / ROOT_STATE_FILE} and try again.",
+            file=sys.stderr,
+        )
+        return None
+
     if not refs:
         print(
             f"repopull: no git repositories found under {config.root}",
@@ -157,6 +173,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _fail(str(exc))
 
     if args.command is None:
+        problem = check_log_dir(config.log_dir)
+        if problem is not None:
+            return _fail(problem)
         try:
             with run_lock(config.log_dir):
                 return run_menu(config)
@@ -212,6 +231,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     progress = (
         _progress if (global_args.verbose or sys.stderr.isatty()) else None
     )
+
+    if args.command in ("status", "sync"):
+        problem = check_log_dir(config.log_dir)
+        if problem is not None:
+            return _fail(problem)
 
     try:
         with run_lock(config.log_dir):

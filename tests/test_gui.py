@@ -21,6 +21,7 @@ else:
     HAVE_PYSIDE = True
 
 if HAVE_PYSIDE:
+    from PySide6.QtCore import QThreadPool
     from PySide6.QtWidgets import QApplication
 
     from repopull.config import Config, load_config, save_config
@@ -373,6 +374,35 @@ if HAVE_PYSIDE:
                     window._auto_refresh_due()
 
                 start.assert_called_once()
+                window.request_quit()
+
+        def test_settings_folder_check_is_backgrounded(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                window = MainWindow(self._config(base, self._tree(base)))
+
+                window._check_root()
+                self.assertEqual(window.check_result.text(), "Checking…")
+
+                QThreadPool.globalInstance().waitForDone(2_000)
+                self.app.processEvents()
+
+                self.assertIn("Found 3 repositories", window.check_result.text())
+                window.request_quit()
+
+        def test_background_discovery_fills_the_library(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                window = MainWindow(
+                    self._config(base, self._tree(base)),
+                    discover_async=True,
+                )
+                self.assertEqual(window.visible_row_count(), 0)
+
+                QThreadPool.globalInstance().waitForDone(2_000)
+                self.app.processEvents()
+
+                self.assertEqual(window.visible_row_count(), 3)
                 window.request_quit()
 
         def test_network_failure_schedules_short_retry(self) -> None:

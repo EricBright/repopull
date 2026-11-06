@@ -21,7 +21,9 @@ it lets `uv` provide PySide6 for that run. You can also run
 It runs natively on Wayland and X11; the platform choice is left to Qt.
 
 On first run there is **no watched folder**. Open **Settings** and choose one;
-the library then fills. Nothing is hard-coded into the app.
+the library then fills. Nothing is hard-coded into the app. The initial scan
+runs in a background worker, so a slow or missing mount does not freeze the
+window; the empty view says it is scanning until the result arrives.
 
 ## What it does
 
@@ -53,7 +55,8 @@ the library then fills. Nothing is hard-coded into the app.
   **Keep running in the system tray** is close-to-tray; the tray icon is visible
   whenever the app runs, and the checkbox controls whether closing hides to it.
   Normal minimize stays in
-  the taskbar. **Refresh status automatically** is status-only, off by default,
+  the taskbar. **Check folder** also scans in the background. **Refresh status
+  automatically** is status-only, off by default,
   has a 5-minute hard floor, and shows an orange warning below 15 minutes. A
   manual status or sync resets the next automatic run. On Linux, when automatic
   refresh is on, a wake from suspend is detected and the app waits 60 seconds for

@@ -21,6 +21,9 @@ The resolved `root` is the single link to the watched data. `repopull where`
 prints it, where it came from (`config.toml key "root"`, `--root`, or
 `not configured`), whether it exists and is writable, and how many repos it
 contains. Discovery also requires at least 64 MiB free on that filesystem.
+The last device and repository count are kept in `logs/root-state.json`; a
+different device at the same path, or an unexpectedly empty root, is refused.
+If that change is intentional, remove the state file and run again.
 
 Command-line flags override the file. `--root` overrides `root`.
 
@@ -36,7 +39,7 @@ Command-line flags override the file. `--root` overrides `root`.
 | `delay_between_repos_s` | number ≥ 0 | `0.5` | Pause between consecutive fetches. |
 | `update_submodules` | boolean | `true` | Run `git submodule update --init --recursive` after a successful update. |
 | `require_git_lfs_for_lfs_repos` | boolean | `true` | Skip repos whose tracked `.gitattributes` uses `filter=lfs` when Git LFS is not installed or not enabled (`git lfs install`). |
-| `log_dir` | string | `"logs"` | Where reports are written. Relative paths resolve against the project root. |
+| `log_dir` | string | `"logs"` | Where reports are written. Relative paths resolve against the project root. It must be writable and have at least 16 MiB free. |
 | `background_mode` | boolean | `false` | Keep running in the system tray when the window is closed. |
 | `auto_refresh_s` | integer (`0` or 300–86400) | `0` | Automatic **status** refresh interval. `0` is off; 1–299 clamp to 300, above 86400 clamps down. |
 | `log_retention_days` | integer ≥ 0 | `30` | Delete timestamped run logs older than this after each run. `0` keeps forever; `latest.*` and `.lock` are never deleted. |
@@ -46,10 +49,12 @@ an older checkout.
 
 ## Log retention
 
-Only top-level `logs/YYYYMMDD-HHMMSS-<mode>.log` files are eligible for
-deletion. `latest.log`, `latest.json`, `.lock`, unrelated files, and symlinks
-are never touched. Pruning runs after the new run's log and both `latest`
-files are written, so a failed write never destroys old evidence.
+Only top-level `logs/YYYYMMDD-HHMMSS[-ffffff]-<mode>.log` files are eligible
+for deletion. `latest.log`, `latest.json`, `.lock`, unrelated files, and
+symlinks are never touched. Pruning runs after the new run's log and both
+`latest` files are written, so a failed write never destroys old evidence.
+Run names use microseconds, with a numeric suffix if a timestamp still
+collides.
 
 ## Automatic refresh
 

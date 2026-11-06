@@ -13,6 +13,7 @@ between discovery, git access, decision-making, and presentation.
 | `git.py` | Typed wrappers around the git CLI; the only place that spawns processes. |
 | `sync.py` | Inspection, fetching, classification, and applying updates. |
 | `report.py` | Table rendering, log persistence, JSON serialization. |
+| `rootstate.py` | Remembers the watched root device and repository count. |
 | `diagnostics.py` | Human-readable path/root explanations and fix-it advice. |
 | `menu.py` | Interactive loop and selection parsing. |
 | `cli.py` | Argument parsing, dispatch, exit codes, the run lock. |

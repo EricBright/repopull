@@ -14,6 +14,12 @@
   partially checked out; the next run reports it.
 - Redact URL credentials from git errors, fsync config writes, and reject a
   watched root that is not writable or has less than 64 MiB free.
+- Remember the watched root device and repo count in `logs/root-state.json`;
+  refuse a different device or an unexpectedly empty root.
+- Put microseconds in run-log names, fall back to a numeric suffix on collision,
+  and require 16 MiB free in the log directory.
+- Scan the watched root in a background worker in the GUI, and fsync/verify the
+  root identity file.
 - Refuse an update when the repository path no longer resolves inside the
   watched root.
 - Corrected the README and GUI limitations, and added an authorship note.

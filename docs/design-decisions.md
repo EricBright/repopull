@@ -364,7 +364,30 @@ are removed from the child environment.
 **Consequences:** Local hooks no longer fire during a repopull run, including
 hooks a user may have installed in a watched repo. LFS smudge filters and
 submodule commands still run; this is not a full sandbox. It closes the easiest
-local-code-execution path without changing the fetch/fast-forward contract. See
+local-code-execution path without changing the fetch/fast-forward contract. A
+SIGKILL of repopull itself can still leave git running; the process-group kill
+covers normal cancellation and timeouts, but a safe parent-death signal would
+need a helper or an unsafe `preexec_fn`. See
 [configuration.md](configuration.md#environment-variables).
+
+## 28. Discovery is asynchronous and remembers the root device
+
+**Context:** `os.walk()` on a removed USB mount can block the UI thread. A
+path-only root check also cannot tell that a different disk was mounted at the
+same path. The CLI has the same path problem without a UI to freeze.
+
+**Decision:** The GUI scans in a `QRunnable` and reports back through Qt signals;
+the empty view says "Scanning the watched folder…" until it finishes. On the
+first healthy discovery, `logs/root-state.json` records the path, `st_dev`, and
+repository count. A later mismatch (different device, or an empty root that was
+non-empty) is refused, with the state file named so the user can remove it for
+an intentional change. The CLI uses the same check.
+
+**Consequences:** A dead mount no longer freezes the GUI; a replaced disk at the
+same path is refused instead of quietly syncing the wrong repositories. An
+intentional disk replacement or a deliberately emptied root requires removing
+`logs/root-state.json` once. The state file lives with the logs, so it cannot
+detect a change if the log directory is on the same missing disk. Smoke tests
+and screenshots keep synchronous discovery so their output stays deterministic.
 
 For the full documentation index, see [README.md](../README.md#documentation-index).

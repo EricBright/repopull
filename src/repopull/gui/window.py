@@ -5,10 +5,20 @@ from __future__ import annotations
 import dataclasses
 import random
 import time
+from collections.abc import Callable
 from pathlib import Path
 from threading import Event
 
-from PySide6.QtCore import QSignalBlocker, QSize, Qt, QThreadPool, QTimer
+from PySide6.QtCore import (
+    QObject,
+    QRunnable,
+    QSignalBlocker,
+    QSize,
+    Qt,
+    QThreadPool,
+    QTimer,
+    Signal,
+)
 from PySide6.QtGui import QAction, QCloseEvent, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -65,7 +75,8 @@ from repopull.refresh import (
     next_delay,
     should_warn,
 )
-from repopull.report import load_latest_report
+from repopull.report import check_log_dir, load_latest_report
+from repopull.rootstate import ROOT_STATE_FILE, verify_root_state
 _ASSETS = Path(__file__).resolve().parent / "assets"
 
 from repopull.sync import (
@@ -88,12 +99,52 @@ def _boottime() -> float | None:
         return None
 
 
+class DiscoverySignals(QObject):
+    """Signals from a background repository scan."""
+
+    finished = Signal(list)
+    failed = Signal(str)
+
+
+class DiscoveryTask(QRunnable):
+    """Scan the watched root without blocking the window."""
+
+    def __init__(
+        self, root: Path, max_depth: int, ignore: tuple[str, ...]
+    ) -> None:
+        super().__init__()
+        self.root = root
+        self.max_depth = max_depth
+        self.ignore = ignore
+        self.signals = DiscoverySignals()
+
+    def run(self) -> None:
+        try:
+            refs = discover_repos(
+                self.root,
+                max_depth=self.max_depth,
+                ignore=self.ignore,
+            )
+        except Exception as exc:  # noqa: BLE001 - report to the UI
+            self.signals.failed.emit(str(exc))
+            return
+        self.signals.finished.emit(refs)
+
+
 class MainWindow(QMainWindow):
     """One window that reads the same config and report files as the CLI."""
 
-    def __init__(self, config: Config) -> None:
+    def __init__(
+        self, config: Config, *, discover_async: bool = False
+    ) -> None:
         super().__init__()
         self.config = config
+        self._discover_async = discover_async
+        self._discovery_generation = 0
+        self._discovery_task: DiscoveryTask | None = None
+        self._discovery_callback: Callable[[], None] | None = None
+        self._check_task: DiscoveryTask | None = None
+        self._check_generation = 0
         self.report: Report | None = load_latest_report(config.log_dir)
         self.rows_by_label: dict[str, Row] = (
             {row.label: row for row in self.report.rows}
@@ -143,13 +194,22 @@ class MainWindow(QMainWindow):
         self.resize(1040, 720)
         self.setMinimumSize(860, 560)
 
-        self._reload_refs()
+        if discover_async:
+            self.discovery_error = (
+                "No watched folder configured. Open Settings and choose one."
+                if config.root is None
+                else "Scanning the watched folder…"
+            )
+        else:
+            self._reload_refs()
         self._build()
         self._populate_settings()
         self._render_library()
         self._update_status_block()
         self._apply_background_mode()
         self._schedule_auto_refresh()
+        if discover_async:
+            self._start_discovery()
 
     # ---------------------------------------------------------------- layout
 
@@ -697,6 +757,81 @@ class MainWindow(QMainWindow):
 
     # --------------------------------------------------------------- rendering
 
+    def _start_discovery(
+        self, callback: Callable[[], None] | None = None
+    ) -> None:
+        """Scan in the background so a dead mount cannot freeze the UI."""
+        if self._quit_requested:
+            return
+        self._discovery_generation += 1
+        generation = self._discovery_generation
+        self._discovery_callback = callback
+        root = self.config.root
+        if root is None:
+            self.refs = []
+            self._discovery_callback = None
+            self.discovery_error = (
+                "No watched folder configured. Open Settings and choose one."
+            )
+            self._render_library()
+            self._update_status_block()
+            self._schedule_auto_refresh()
+            return
+
+        self.refs = []
+        self.discovery_error = "Scanning the watched folder…"
+        self._render_library()
+        task = DiscoveryTask(
+            root, self.config.max_depth, self.config.ignore
+        )
+        task.signals.finished.connect(
+            lambda refs: self._on_discovery_finished(generation, refs)
+        )
+        task.signals.failed.connect(
+            lambda message: self._on_discovery_failed(generation, message)
+        )
+        self._discovery_task = task
+        QThreadPool.globalInstance().start(task)
+
+    def _on_discovery_finished(
+        self, generation: int, refs: list[RepoRef]
+    ) -> None:
+        if generation != self._discovery_generation or self._quit_requested:
+            return
+        self._discovery_task = None
+        found = [ref for ref in refs if isinstance(ref, RepoRef)]
+        self.refs = found
+        problem = verify_root_state(
+            self.config.log_dir, self.config.root, len(found)
+        ) if self.config.root is not None else None
+        if problem is not None:
+            self.refs = []
+            self.discovery_error = (
+                f"{problem}. Remove {self.config.log_dir / ROOT_STATE_FILE} "
+                "if this is intentional."
+            )
+        else:
+            self.discovery_error = None
+        self._render_library()
+        self._update_status_block()
+        self._schedule_auto_refresh()
+        callback = self._discovery_callback
+        self._discovery_callback = None
+        if callback is not None and not self._quit_requested:
+            callback()
+
+    def _on_discovery_failed(self, generation: int, message: str) -> None:
+        if generation != self._discovery_generation or self._quit_requested:
+            return
+        self._discovery_task = None
+        self._discovery_callback = None
+        self.refs = []
+        self.discovery_error = message
+        self._render_library()
+        self._update_status_block()
+        self._schedule_auto_refresh()
+        self._flash(message)
+
     def _reload_refs(self) -> None:
         root = self.config.root
         if root is None:
@@ -711,10 +846,21 @@ class MainWindow(QMainWindow):
                 max_depth=self.config.max_depth,
                 ignore=self.config.ignore,
             )
-            self.discovery_error = None
         except DiscoveryError as exc:
             self.refs = []
             self.discovery_error = str(exc)
+            return
+        problem = verify_root_state(
+            self.config.log_dir, root, len(self.refs)
+        )
+        if problem is not None:
+            self.refs = []
+            self.discovery_error = (
+                f"{problem}. Remove {self.config.log_dir / ROOT_STATE_FILE} "
+                "if this is intentional."
+            )
+            return
+        self.discovery_error = None
 
     def _report_rows(self) -> dict[str, Row]:
         return self.rows_by_label
@@ -1029,7 +1175,10 @@ class MainWindow(QMainWindow):
                 self, "repopull", f"Could not save settings: {exc}"
             )
             return
-        self._reload_refs()
+        if self._discover_async:
+            self._start_discovery()
+        else:
+            self._reload_refs()
         self._populate_settings()
         self._apply_background_mode()
         self._schedule_auto_refresh()
@@ -1074,16 +1223,41 @@ class MainWindow(QMainWindow):
             for line in self.settings_ignore.toPlainText().splitlines()
             if line.strip()
         )
-        try:
-            refs = discover_repos(
-                Path(text).expanduser(),
-                max_depth=int(self.settings_max_depth.value()),
-                ignore=ignore,
-            )
-        except DiscoveryError as exc:
-            self.check_result.setText(f"✗ {exc}")
-        else:
-            self.check_result.setText(f"✓ Found {len(refs)} repositories")
+        self._check_generation += 1
+        generation = self._check_generation
+        self.check_button.setEnabled(False)
+        self.check_result.setText("Checking…")
+        task = DiscoveryTask(
+            Path(text).expanduser(),
+            int(self.settings_max_depth.value()),
+            ignore,
+        )
+        task.signals.finished.connect(
+            lambda refs: self._on_check_finished(generation, refs)
+        )
+        task.signals.failed.connect(
+            lambda message: self._on_check_failed(generation, message)
+        )
+        self._check_task = task
+        QThreadPool.globalInstance().start(task)
+
+    def _on_check_finished(
+        self, generation: int, refs: list[RepoRef]
+    ) -> None:
+        if generation != self._check_generation:
+            return
+        self._check_task = None
+        self.check_button.setEnabled(True)
+        self.check_result.setText(
+            f"✓ Found {len([ref for ref in refs if isinstance(ref, RepoRef)])} repositories"
+        )
+
+    def _on_check_failed(self, generation: int, message: str) -> None:
+        if generation != self._check_generation:
+            return
+        self._check_task = None
+        self.check_button.setEnabled(True)
+        self.check_result.setText(f"✗ {message}")
 
     # -------------------------------------------------------------- run control
 
@@ -1165,6 +1339,10 @@ class MainWindow(QMainWindow):
         self.suspend_timer.stop()
         self._resume_timer.stop()
         self._resume_pending = False
+        self._discovery_generation += 1
+        self._discovery_callback = None
+        self._check_generation += 1
+        self._check_task = None
         if self._quit_requested:
             if self.task is None:
                 self._quit_application()
@@ -1362,8 +1540,23 @@ class MainWindow(QMainWindow):
             self._resume_timer.start(15_000)
             return
         self._resume_pending = False
+        if self._discover_async:
+            self._start_discovery(callback=self._resume_start_run)
+            return
         self._reload_refs()
         self._render_library()
+        self._resume_start_run()
+
+    def _resume_start_run(self) -> None:
+        if (
+            self._quit_requested
+            or self.config.auto_refresh_s <= 0
+            or self._auto_paused
+            or self._resume_pending
+        ):
+            return
+        if self.task is not None:
+            return
         if not self.refs:
             self._schedule_auto_refresh()
             return
@@ -1395,6 +1588,14 @@ class MainWindow(QMainWindow):
             return
         if not refs:
             self._flash("No repositories to run.")
+            if auto:
+                self._schedule_auto_refresh()
+            return
+        problem = check_log_dir(self.config.log_dir)
+        if problem is not None:
+            self._flash(problem)
+            if auto:
+                self._schedule_auto_refresh()
             return
         if not auto:
             self.auto_timer.stop()

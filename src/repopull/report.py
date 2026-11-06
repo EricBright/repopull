@@ -6,6 +6,7 @@ import dataclasses
 import json
 import os
 import re
+import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -24,7 +25,8 @@ _COLORS: dict[Outcome, str] = {
 _HEADERS: tuple[str, ...] = ("Repository", "Branch", "Status", "Commits", "Detail")
 _MAX_LABEL = 48
 _MAX_DETAIL = 100
-_RUN_LOG_RE = re.compile(r"(?P<stamp>\d{8}-\d{6})-.+\.log")
+_RUN_LOG_RE = re.compile(r"(?P<stamp>\d{8}-\d{6}(?:-\d{6})?)-.+\.log")
+MIN_LOG_FREE_BYTES = 16 * 1024 * 1024
 
 
 def _paint(text: str, outcome: Outcome, *, color: bool) -> str:
@@ -132,6 +134,26 @@ def _atomic_write_text(path: Path, text: str) -> None:
             pass
 
 
+def check_log_dir(log_dir: Path) -> str | None:
+    """Return a refusal message when the log directory cannot take a run."""
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return f"cannot create log directory {log_dir}: {exc}"
+    if not os.access(log_dir, os.W_OK | os.X_OK):
+        return f"log directory is not writable: {log_dir}"
+    try:
+        free = shutil.disk_usage(log_dir).free
+    except OSError as exc:
+        return f"cannot read log directory usage: {exc}"
+    if free < MIN_LOG_FREE_BYTES:
+        return (
+            "log directory has less than "
+            f"{MIN_LOG_FREE_BYTES // (1024 * 1024)} MiB free: {log_dir}"
+        )
+    return None
+
+
 def prune_logs(
     log_dir: Path,
     retention_days: int,
@@ -141,9 +163,9 @@ def prune_logs(
     """Delete timestamped run logs older than `retention_days`.
 
     `0` disables pruning. Only top-level files matching
-    `YYYYMMDD-HHMMSS-<mode>.log` are considered; `latest.log`, `latest.json`,
-    `.lock`, unrelated files, and symlinks are left alone. Failures are
-    best-effort and never raise.
+    `YYYYMMDD-HHMMSS[-ffffff]-<mode>.log` are considered; `latest.log`,
+    `latest.json`, `.lock`, unrelated files, and symlinks are left alone.
+    Failures are best-effort and never raise.
     """
     if retention_days <= 0:
         return 0
@@ -161,9 +183,15 @@ def prune_logs(
         match = _RUN_LOG_RE.fullmatch(path.name)
         if match is None:
             continue
-        try:
-            stamp = datetime.strptime(match.group("stamp"), "%Y%m%d-%H%M%S")
-        except ValueError:
+        raw_stamp = match.group("stamp")
+        stamp: datetime | None = None
+        for fmt in ("%Y%m%d-%H%M%S-%f", "%Y%m%d-%H%M%S"):
+            try:
+                stamp = datetime.strptime(raw_stamp, fmt)
+                break
+            except ValueError:
+                continue
+        if stamp is None:
             continue
         if stamp >= cutoff:
             continue
@@ -189,8 +217,13 @@ def write_log(
     after the new files are safely written.
     """
     log_dir.mkdir(parents=True, exist_ok=True)
-    stamp = report.started_at.strftime("%Y%m%d-%H%M%S")
-    path = log_dir / f"{stamp}-{report.mode}.log"
+    stamp = report.started_at.strftime("%Y%m%d-%H%M%S-%f")
+    base = f"{stamp}-{report.mode}"
+    path = log_dir / f"{base}.log"
+    suffix = 1
+    while path.exists():
+        path = log_dir / f"{base}-{suffix}.log"
+        suffix += 1
     stamped = dataclasses.replace(report, log_path=path)
 
     run_text = render_report(stamped, color=False) + "\n"

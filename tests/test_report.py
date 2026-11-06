@@ -8,9 +8,12 @@ import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from repopull.models import Outcome, Report, Row
 from repopull.report import (
+    check_log_dir,
     load_latest_report,
     prune_logs,
     render_report,
@@ -99,6 +102,32 @@ class ReportRoundTripTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             report_from_dict(data)
 
+    def test_same_timestamp_gets_distinct_run_logs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            log_dir = Path(tmp)
+
+            first = write_log(_report(), log_dir)
+            second = write_log(_report(), log_dir)
+
+            self.assertNotEqual(first.log_path, second.log_path)
+            assert first.log_path is not None
+            assert second.log_path is not None
+            self.assertTrue(first.log_path.exists())
+            self.assertTrue(second.log_path.exists())
+
+    def test_log_dir_free_space_and_writability(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            log_dir = Path(tmp) / "logs"
+
+            self.assertIsNone(check_log_dir(log_dir))
+            with patch(
+                "repopull.report.shutil.disk_usage",
+                return_value=SimpleNamespace(free=0),
+            ):
+                self.assertIn("less than", check_log_dir(log_dir) or "")
+            with patch("repopull.report.os.access", return_value=False):
+                self.assertIn("not writable", check_log_dir(log_dir) or "")
+
     def test_network_error_round_trip_and_render(self) -> None:
         report = Report(
             mode="status",
@@ -136,6 +165,7 @@ class LogRetentionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             log_dir = Path(tmp)
             old = log_dir / "20200101-120000-status.log"
+            old_us = log_dir / "20200101-120000-123456-status.log"
             recent = log_dir / "20260101-120000-status.log"
             latest_log = log_dir / "latest.log"
             latest_json = log_dir / "latest.json"
@@ -144,7 +174,7 @@ class LogRetentionTests(unittest.TestCase):
             malformed = log_dir / "20260101-120000.log"
             outside = log_dir / "outside.txt"
             link = log_dir / "20200101-130000-sync.log"
-            for path in (old, recent, latest_log, latest_json, lock, unrelated, malformed, outside):
+            for path in (old, old_us, recent, latest_log, latest_json, lock, unrelated, malformed, outside):
                 path.write_text("x", encoding="utf-8")
             os.symlink(outside, link)
 
@@ -152,8 +182,9 @@ class LogRetentionTests(unittest.TestCase):
                 log_dir, 30, reference=datetime(2026, 1, 15, 12, 0, 0)
             )
 
-            self.assertEqual(removed, 1)
+            self.assertEqual(removed, 2)
             self.assertFalse(old.exists())
+            self.assertFalse(old_us.exists())
             self.assertTrue(recent.exists())
             self.assertTrue(latest_log.exists())
             self.assertTrue(latest_json.exists())
