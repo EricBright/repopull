@@ -1,6 +1,24 @@
 # Auto-refresh and system tray plan (0.4.0)
 
 **Status:** implemented in 0.4.0; 0.4.1 tray/Wayland; 0.4.2 checkbox cosmetics; 0.4.3 immediate persistence; kept as the plan record.
+
+## Current local state / handoff (2026-11-05)
+
+Local-only mode. No remote writes after `eb78419`.
+
+- `dev` = `e17a4fd` (0.4.3); `stable` = `61becf7` (0.4.0).
+- Remote `main` = `eb78419` (0.4.1 WIP, pushed before the local-only instruction).
+- Latest release = 0.4.0. No 0.4.1/0.4.2/0.4.3 tag or release.
+- Local 0.4.3 AppImage: `dist/repopull-0.4.3-x86_64.AppImage`,
+  SHA-256 `26e5f40a4ef65059b095aa25bd7fdfb1d20b39a89d9f2c6ca6e0737806872045`.
+- 119 tests; mypy clean on 21 files; no path PII in the image.
+- 0.4.3 makes background and automatic-refresh controls apply and persist
+  immediately (targeted writer preserves comments/other keys).
+- Tray icon is shown whenever the app runs; Wayland preferred with XCB fallback.
+- Next: user acceptance test of 0.4.3 (enable background, close, tray remains;
+  config keys written). If accepted, decide the destructive reset of remote
+  `main` to stable before any stable push/release. Tests remain local until then.
+
 **Audience:** maintainers.
 **Purpose:** durable working spec for the resident auto-refresh and tray work.
 When the feature ships, fold the lasting facts into
