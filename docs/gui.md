@@ -50,44 +50,60 @@ restored; a detail page is restored only if that repository is still present.
 - **Detail page** (click a row): path, branch, upstream, ahead/behind, working
   tree, Git LFS, submodules, remote URL, and the last result.
 - **Force sync…** on the detail page resets one repository after a confirmation.
-- **Settings**: grouped into Watching (folder, depth, ignore globs),
-  Background & refresh (tray, automatic status refresh), Network (delay,
-  timeouts), Updates (submodules, LFS), and Storage (logs, retention).
-  Background and refresh changes apply immediately; other changes are written by
-  **Save settings**. **Reset to defaults** restores the shipped values first. The
-  logs path is resolved at runtime from `$XDG_CONFIG_HOME` (or `~/.config`).
-  **Keep run logs** sets `log_retention_days`; `0` keeps every run log.
-  **Keep running in the system tray** is close-to-tray; the tray icon is visible
-  whenever the app runs, and the checkbox controls whether closing hides to it.
-  Normal minimize stays in
-  the taskbar. **Check folder** also scans in the background. **Refresh status
-  automatically** is status-only, off by default,
-  has a 5-minute hard floor, and shows an orange warning below 15 minutes. A
-  manual status or sync resets the next automatic run. On Linux, when automatic
-  refresh is on, a wake from suspend is detected and the app waits 60 seconds for
-  the desktop and network to settle before running one status check; missed
-  intervals are not queued. If a run was in flight, that run finishes first.
-  Two consecutive network-level fetch failures stop that sweep and mark the
-  remaining repositories "not attempted"; automatic retries are 2, 5, 15, 30,
-  and 60 minutes, so a reconnect is noticed quickly without repeatedly timing
-  out every repository.
-  With background mode on, the symbolic tray menu offers Open, Refresh status
-  now, Pause/Resume automatic refresh, and Quit. Quit cancels the current git
-  command, waits for the worker to unwind, and releases the locks. A cancelled
-  git command can leave that repository with a lock or partial checkout; the
-  next run reports it rather than forcing a repair. A second GUI launch refuses
-  to start.
-  The **Git LFS** row shows whether `git-lfs` is installed and enabled;
-  **Help…** explains what LFS is and shows the install command for the detected
-  distribution plus `git lfs install`. Nothing is installed or run automatically.
-  The same help appears on a repository's page when LFS is why it cannot sync.
+
+### Settings
+
+Settings has its own section rail beside the settings content. Switching sections
+keeps any draft edits, and the whole page fits without scrolling at the default
+window size.
+
+| Section | Controls |
+|---|---|
+| **Watching** | Watched folder with Browse and Check, search depth, ignore globs |
+| **Refresh** | Close to tray, automatic status refresh, interval |
+| **Network** | Delay between fetches, fetch timeout, other git timeout |
+| **Updates** | Submodules, LFS skip policy, LFS status and Help |
+| **Storage** | Config file, logs directory, log retention |
+
+The header shows **Unsaved changes** or **All changes saved**. **Save settings**
+is disabled when there is nothing to write; **Reset to defaults** restores the
+shipped values first. Refresh changes apply immediately, with or without Save.
+Saving any other change rewrites `config.toml` and drops hand-written comments.
+
+The logs path is resolved at runtime from `$XDG_CONFIG_HOME` (or `~/.config`).
+**Keep run logs** sets `log_retention_days`; `0` keeps every run log.
+**Keep running in the system tray** is close-to-tray; the tray icon is visible
+whenever the app runs, and the checkbox controls whether closing hides to it.
+Normal minimize stays in the taskbar. **Check folder** also scans in the
+background.
+
+**Refresh status automatically** is status-only, off by default, has a 5-minute
+hard floor, and shows an orange warning below 15 minutes. A manual status or sync
+resets the next automatic run. On Linux, when automatic refresh is on, a wake
+from suspend is detected and the app waits 60 seconds for the desktop and network
+to settle before running one status check; missed intervals are not queued. If a
+run was in flight, that run finishes first. Two consecutive network-level fetch
+failures stop that sweep and mark the remaining repositories "not attempted";
+automatic retries are 2, 5, 15, 30, and 60 minutes, so a reconnect is noticed
+quickly without repeatedly timing out every repository.
+
+With background mode on, the symbolic tray menu offers Open, Refresh status now,
+Pause/Resume automatic refresh, and Quit. Quit cancels the current git command,
+waits for the worker to unwind, and releases the locks. A cancelled git command
+can leave that repository with a lock or partial checkout; the next run reports
+it rather than forcing a repair. A second GUI launch refuses to start.
+
+The **Git LFS** row shows whether `git-lfs` is installed and enabled; **Help…**
+explains what LFS is and shows the install command for the detected distribution
+plus `git lfs install`. Nothing is installed or run automatically. The same help
+appears on a repository's page when LFS is why it cannot sync.
 
 The window/taskbar icon and the sidebar mark are documented in
 [branding.md](branding.md).
 
 ![Git LFS help](previews/gui-lfs-help.png)
 
-![The Settings page](previews/gui-settings.png)
+![Settings with the Watching section selected](previews/gui-settings.png)
 
 ## Safety
 
@@ -104,6 +120,8 @@ The GUI holds the same `logs/.lock` as the CLI, so two runs cannot overlap.
 - Saving general settings rewrites `config.toml` and drops hand-written
   comments; background and refresh changes use a targeted writer that preserves
   them.
+- Settings are not autosaved. Quitting with unsaved changes discards them; the
+  header shows **Unsaved changes** while any are pending.
 - The window is dark-only.
 - Keyboard navigation is basic.
 

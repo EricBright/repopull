@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.7 — 2026-11-06
+
+- Rebuilt the GUI Settings page as five sections (Watching, Refresh, Network,
+  Updates, Storage) with a local section rail, title/hint rows, and a sticky
+  Save/Reset footer. Every section fits without scrolling at the default window
+  size; draft edits survive switching sections.
+- The Settings header now shows **Unsaved changes** or **All changes saved**,
+  and Save is disabled when clean. Refresh changes still apply immediately.
+
 ## 0.4.6 — 2026-11-06
 
 - Remember the last GUI page, sidebar filter, and detail repository across

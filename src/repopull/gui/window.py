@@ -27,10 +27,8 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QDoubleSpinBox,
     QFileDialog,
-    QFormLayout,
     QFrame,
     QGridLayout,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -64,6 +62,11 @@ from repopull.diagnostics import lfs_status
 from repopull.gui.jobs import RunTask
 from repopull.gui.lfs_help import LfsHelpDialog
 from repopull.gui.rows import RepoRow, RowView, row_view, unchecked_view
+from repopull.gui.settings import (
+    SETTINGS_SECTIONS,
+    SettingRow,
+    SettingsCard,
+)
 from repopull.models import Outcome, RepoRef, Report, Row
 from repopull.refresh import (
     AUTO_REFRESH_JITTER_S,
@@ -165,6 +168,8 @@ class MainWindow(QMainWindow):
         self.task: RunTask | None = None
         self._quit_requested = False
         self._loading_settings = False
+        self._settings_section = 0
+        self._settings_dirty = False
         self._tray_available = QSystemTrayIcon.isSystemTrayAvailable()
         self.tray: QSystemTrayIcon | None = None
         self.tray_menu: QMenu | None = None
@@ -487,177 +492,344 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(22, 20, 22, 16)
         layout.setSpacing(14)
 
+        header = QHBoxLayout()
         title = QLabel("Settings")
         title.setObjectName("PageTitle")
-        layout.addWidget(title)
+        header.addWidget(title)
+        header.addStretch(1)
+        self.settings_status = QLabel("All changes saved")
+        self.settings_status.setObjectName("SettingsStatus")
+        self.settings_status.setAccessibleName("Settings save status")
+        header.addWidget(self.settings_status)
+        layout.addLayout(header)
 
-        note = QLabel(
-            "Background and refresh changes apply immediately. Other changes "
-            "are saved when you press Save settings; saving removes comments "
-            "you added to that file."
-        )
-        note.setObjectName("Muted")
-        note.setWordWrap(True)
-        layout.addWidget(note)
+        body = QHBoxLayout()
+        body.setSpacing(16)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(
+        nav = QWidget()
+        nav.setFixedWidth(140)
+        nav.setAccessibleName("Settings sections")
+        nav_layout = QVBoxLayout(nav)
+        nav_layout.setContentsMargins(0, 0, 0, 0)
+        nav_layout.setSpacing(2)
+        self.settings_nav_group = QButtonGroup(self)
+        self.settings_nav_group.setExclusive(True)
+        self.settings_nav_buttons: list[QPushButton] = []
+        for index, name in enumerate(SETTINGS_SECTIONS):
+            button = QPushButton(name)
+            button.setObjectName("SettingsNav")
+            button.setCheckable(True)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setAccessibleName(f"{name} settings")
+            self.settings_nav_group.addButton(button, index)
+            nav_layout.addWidget(button)
+            self.settings_nav_buttons.append(button)
+        nav_layout.addStretch(1)
+        body.addWidget(nav)
+
+        self.settings_scroll = QScrollArea()
+        self.settings_scroll.setWidgetResizable(True)
+        self.settings_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.settings_scroll.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
-        scroll.setStyleSheet("background: transparent;")
-        scroll.viewport().setStyleSheet("background: transparent;")
+        self.settings_scroll.setStyleSheet("background: transparent;")
+        self.settings_scroll.viewport().setStyleSheet("background: transparent;")
 
-        content = QWidget()
-        content.setStyleSheet("background: transparent;")
-        content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(14)
-
-        watching = QGroupBox("Watching")
-        watch_form = QFormLayout(watching)
-        watch_form.setContentsMargins(16, 18, 16, 14)
-        watch_form.setSpacing(10)
-
-        self.settings_config_label = QLabel("-")
-        self.settings_config_label.setWordWrap(True)
-        self.settings_config_label.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
+        self.settings_stack = QStackedWidget()
+        self.settings_pages: list[QWidget] = []
+        builders = (
+            self._build_settings_watching,
+            self._build_settings_refresh,
+            self._build_settings_network,
+            self._build_settings_updates,
+            self._build_settings_storage,
         )
-        watch_form.addRow("Config file", self.settings_config_label)
+        for build in builders:
+            section = QWidget()
+            column = QVBoxLayout(section)
+            column.setContentsMargins(0, 0, 8, 0)
+            column.setSpacing(14)
+            build(column)
+            column.addStretch(1)
+            self.settings_stack.addWidget(section)
+            self.settings_pages.append(section)
+        self.settings_scroll.setWidget(self.settings_stack)
+        body.addWidget(self.settings_scroll, 1)
+        layout.addLayout(body, 1)
+
+        actions = QHBoxLayout()
+        self.reset_button = QPushButton("Reset to defaults")
+        self.reset_button.setObjectName("Ghost")
+        self.reset_button.setToolTip(
+            "Restore the shipped defaults in the form; Save writes them."
+        )
+        self.reset_button.clicked.connect(self._reset_settings)
+        actions.addWidget(self.reset_button)
+        actions.addStretch(1)
+        self.save_button = QPushButton("Save settings")
+        self.save_button.setObjectName("Primary")
+        self.save_button.setToolTip(
+            "Write these settings to config.toml. Hand-written comments are removed."
+        )
+        self.save_button.clicked.connect(self._save_settings)
+        actions.addWidget(self.save_button)
+        layout.addLayout(actions)
+
+        self.settings_nav_group.idToggled.connect(
+            self._settings_section_toggled
+        )
+        self.settings_nav_buttons[0].setChecked(True)
+        self.settings_stack.setCurrentIndex(0)
+        self._set_settings_dirty(False)
+        return page
+
+    def _build_settings_watching(self, column: QVBoxLayout) -> None:
+        card = SettingsCard("Watching")
+
+        root_controls = QWidget()
+        root_layout = QVBoxLayout(root_controls)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(8)
 
         root_row = QHBoxLayout()
+        root_row.setSpacing(8)
         self.settings_root = QLineEdit()
+        self.settings_root.setPlaceholderText("/path/to/repositories")
+        self.settings_root.setAccessibleName("Watched folder")
         browse = QPushButton("Browse…")
         browse.clicked.connect(self._browse_root)
         root_row.addWidget(self.settings_root, 1)
         root_row.addWidget(browse)
-        root_widget = QWidget()
-        root_widget.setLayout(root_row)
-        watch_form.addRow("Watched folder", root_widget)
+        root_layout.addLayout(root_row)
+
+        check_row = QHBoxLayout()
+        check_row.setSpacing(8)
+        self.check_button = QPushButton("Check folder")
+        self.check_button.clicked.connect(self._check_root)
+        self.check_result = QLabel("")
+        self.check_result.setObjectName("SettingHint")
+        self.check_result.setWordWrap(True)
+        check_row.addWidget(self.check_button)
+        check_row.addWidget(self.check_result, 1)
+        root_layout.addLayout(check_row)
+
+        card.add(
+            SettingRow(
+                "Watched folder",
+                "The folder scanned for Git repositories.",
+                root_controls,
+                below=True,
+            )
+        )
 
         self.settings_max_depth = QSpinBox()
         self.settings_max_depth.setRange(1, 4)
-        self.settings_max_depth.setToolTip(
-            "1 = direct children, 2 = grandchildren too"
+        self.settings_max_depth.setFixedWidth(120)
+        self.settings_max_depth.setAccessibleName("Search depth")
+        card.add(
+            SettingRow(
+                "Depth",
+                "1 = direct children; 2 = grandchildren too.",
+                self.settings_max_depth,
+            )
         )
-        watch_form.addRow("Depth", self.settings_max_depth)
 
         self.settings_ignore = QPlainTextEdit()
         self.settings_ignore.setPlaceholderText(
             "One glob per line, e.g.\nphotocraft-corpus\n*.old"
         )
-        self.settings_ignore.setFixedHeight(76)
+        self.settings_ignore.setFixedHeight(92)
         self.settings_ignore.setTabChangesFocus(True)
-        self.settings_ignore.setToolTip(
-            "Matches the relative label and the repository name"
+        self.settings_ignore.setAccessibleName("Ignored repository globs")
+        card.add(
+            SettingRow(
+                "Ignore",
+                "Matches the relative label and the repository name.",
+                self.settings_ignore,
+                below=True,
+            )
         )
-        watch_form.addRow("Ignore", self.settings_ignore)
-        content_layout.addWidget(watching)
+        column.addWidget(card)
 
-        background = QGroupBox("Background && refresh")
-        background_form = QFormLayout(background)
-        background_form.setContentsMargins(16, 18, 16, 14)
-        background_form.setSpacing(10)
+        self.settings_root.textChanged.connect(self._on_settings_edited)
+        self.settings_max_depth.valueChanged.connect(
+            self._on_settings_edited
+        )
+        self.settings_ignore.textChanged.connect(self._on_settings_edited)
 
-        self.settings_background = QCheckBox(
-            "Keep running in the system tray when the window is closed"
+    def _build_settings_refresh(self, column: QVBoxLayout) -> None:
+        card = SettingsCard("Refresh")
+
+        self.settings_background = QCheckBox()
+        self.settings_background.setAccessibleName(
+            "Keep running in the system tray"
         )
         self.settings_background.setEnabled(self._tray_available)
         if not self._tray_available:
             self.settings_background.setToolTip(
                 "The system tray is not available in this session."
             )
-        background_form.addRow(self.settings_background)
+        card.add(
+            SettingRow(
+                "Keep running in the system tray",
+                "When checked, closing hides the window instead of quitting.",
+                self.settings_background,
+            )
+        )
 
         self.settings_tray_status = QLabel(
             "System tray is available. The tray icon is visible while repopull "
-            "runs; closing keeps it there only when the box above is checked."
+            "runs; closing keeps it there only when this box is checked."
             if self._tray_available
             else "System tray is not available in this session; background mode "
             "is disabled and closing quits."
         )
-        self.settings_tray_status.setObjectName("Muted")
+        self.settings_tray_status.setObjectName("SettingHint")
         self.settings_tray_status.setWordWrap(True)
-        background_form.addRow(self.settings_tray_status)
+        card.add_note(self.settings_tray_status)
 
-        self.settings_auto = QCheckBox("Refresh status automatically")
-        background_form.addRow(self.settings_auto)
+        self.settings_auto = QCheckBox()
+        self.settings_auto.setAccessibleName("Refresh status automatically")
+        card.add(
+            SettingRow(
+                "Refresh status automatically",
+                "Status only — it never syncs or changes a working tree.",
+                self.settings_auto,
+            )
+        )
 
         self.settings_auto_minutes = QSpinBox()
         self.settings_auto_minutes.setRange(5, 1440)
         self.settings_auto_minutes.setSuffix(" minutes")
         self.settings_auto_minutes.setValue(15)
-        background_form.addRow("Every", self.settings_auto_minutes)
+        self.settings_auto_minutes.setFixedWidth(150)
+        self.settings_auto_minutes.setAccessibleName(
+            "Automatic refresh interval"
+        )
+        card.add(
+            SettingRow(
+                "Check every",
+                "5-minute floor.",
+                self.settings_auto_minutes,
+            )
+        )
 
         self.settings_auto_warning = QLabel(
             "Frequent fetches increase load on remote servers; "
             "15 minutes or longer is recommended."
         )
+        self.settings_auto_warning.setObjectName("SettingWarning")
         self.settings_auto_warning.setWordWrap(True)
-        self.settings_auto_warning.setStyleSheet("color: #d29922;")
         self.settings_auto_warning.setVisible(False)
-        background_form.addRow(self.settings_auto_warning)
+        card.add_note(self.settings_auto_warning)
 
-        auto_note = QLabel(
-            "Status only — automatic refresh never syncs. "
-            "Closing quits unless the tray setting is enabled."
+        immediate = QLabel(
+            "Background and refresh changes apply immediately."
         )
-        auto_note.setWordWrap(True)
-        auto_note.setObjectName("Muted")
-        background_form.addRow(auto_note)
+        immediate.setObjectName("SettingHint")
+        immediate.setWordWrap(True)
+        card.add_note(immediate)
 
         self.settings_background.toggled.connect(self._on_background_toggled)
         self.settings_auto.toggled.connect(self._on_auto_toggled)
         self.settings_auto_minutes.valueChanged.connect(
             self._on_auto_minutes_changed
         )
-        content_layout.addWidget(background)
+        column.addWidget(card)
 
-        network = QGroupBox("Network")
-        network_form = QFormLayout(network)
-        network_form.setContentsMargins(16, 18, 16, 14)
-        network_form.setSpacing(10)
+    def _build_settings_network(self, column: QVBoxLayout) -> None:
+        card = SettingsCard("Network")
 
         self.settings_delay = QDoubleSpinBox()
         self.settings_delay.setRange(0.0, 60.0)
         self.settings_delay.setSingleStep(0.5)
         self.settings_delay.setSuffix(" s")
-        network_form.addRow("Delay between fetches", self.settings_delay)
+        self.settings_delay.setFixedWidth(140)
+        self.settings_delay.setAccessibleName(
+            "Delay between fetches"
+        )
+        card.add(
+            SettingRow(
+                "Delay between fetches",
+                "Polite pause between repositories.",
+                self.settings_delay,
+            )
+        )
 
         self.settings_fetch_timeout = QSpinBox()
         self.settings_fetch_timeout.setRange(10, 3600)
         self.settings_fetch_timeout.setSuffix(" s")
-        network_form.addRow("Fetch timeout", self.settings_fetch_timeout)
+        self.settings_fetch_timeout.setFixedWidth(140)
+        self.settings_fetch_timeout.setAccessibleName("Fetch timeout")
+        card.add(
+            SettingRow(
+                "Fetch timeout",
+                "A fetch that takes longer is abandoned.",
+                self.settings_fetch_timeout,
+            )
+        )
 
         self.settings_command_timeout = QSpinBox()
         self.settings_command_timeout.setRange(10, 600)
         self.settings_command_timeout.setSuffix(" s")
-        network_form.addRow("Other git timeout", self.settings_command_timeout)
-        content_layout.addWidget(network)
+        self.settings_command_timeout.setFixedWidth(140)
+        self.settings_command_timeout.setAccessibleName(
+            "Other git command timeout"
+        )
+        card.add(
+            SettingRow(
+                "Other git timeout",
+                "Inspection and submodule commands.",
+                self.settings_command_timeout,
+            )
+        )
+        column.addWidget(card)
 
-        updates = QGroupBox("Updates")
-        updates_form = QFormLayout(updates)
-        updates_form.setContentsMargins(16, 18, 16, 14)
-        updates_form.setSpacing(10)
+        self.settings_delay.valueChanged.connect(self._on_settings_edited)
+        self.settings_fetch_timeout.valueChanged.connect(
+            self._on_settings_edited
+        )
+        self.settings_command_timeout.valueChanged.connect(
+            self._on_settings_edited
+        )
 
-        self.settings_submodules = QCheckBox(
+    def _build_settings_updates(self, column: QVBoxLayout) -> None:
+        card = SettingsCard("Updates")
+
+        self.settings_submodules = QCheckBox()
+        self.settings_submodules.setAccessibleName(
             "Run git submodule update after a pull"
         )
-        updates_form.addRow("", self.settings_submodules)
+        card.add(
+            SettingRow(
+                "Update submodules",
+                "Runs git submodule update --init --recursive after a "
+                "fast-forward.",
+                self.settings_submodules,
+            )
+        )
 
-        self.settings_lfs = QCheckBox(
+        self.settings_lfs = QCheckBox()
+        self.settings_lfs.setAccessibleName(
             "Skip LFS repositories when Git LFS is not ready"
         )
         self.settings_lfs.setToolTip(
             "Requires git-lfs to be installed and enabled (git lfs install)"
         )
-        updates_form.addRow("", self.settings_lfs)
+        card.add(
+            SettingRow(
+                "Skip LFS repositories when Git LFS is not ready",
+                "Keeps pointer files from replacing real content.",
+                self.settings_lfs,
+            )
+        )
 
         lfs_row = QHBoxLayout()
+        lfs_row.setContentsMargins(0, 0, 0, 0)
+        lfs_row.setSpacing(8)
         self.settings_lfs_status = QLabel("-")
-        self.settings_lfs_status.setObjectName("Muted")
+        self.settings_lfs_status.setObjectName("SettingHint")
         lfs_row.addWidget(self.settings_lfs_status)
         lfs_row.addStretch(1)
         lfs_help = QPushButton("Help…")
@@ -666,60 +838,81 @@ class MainWindow(QMainWindow):
         lfs_row.addWidget(lfs_help)
         lfs_widget = QWidget()
         lfs_widget.setLayout(lfs_row)
-        updates_form.addRow("Git LFS", lfs_widget)
+        card.add(
+            SettingRow(
+                "Git LFS",
+                "Whether git-lfs is installed and enabled.",
+                lfs_widget,
+            )
+        )
+        column.addWidget(card)
 
-        content_layout.addWidget(updates)
+        self.settings_submodules.toggled.connect(self._on_settings_edited)
+        self.settings_lfs.toggled.connect(self._on_settings_edited)
 
+    def _build_settings_storage(self, column: QVBoxLayout) -> None:
+        card = SettingsCard("Storage")
 
-        storage = QGroupBox("Storage")
-        storage_form = QFormLayout(storage)
-        storage_form.setContentsMargins(16, 18, 16, 14)
-        storage_form.setSpacing(10)
+        self.settings_config_label = QLabel("-")
+        self.settings_config_label.setObjectName("SettingValue")
+        self.settings_config_label.setAccessibleName("Config file path")
+        self.settings_config_label.setWordWrap(True)
+        self.settings_config_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        card.add(
+            SettingRow(
+                "Config file",
+                "The TOML file the GUI and CLI share.",
+                self.settings_config_label,
+                below=True,
+            )
+        )
 
         self.settings_logs_label = QLabel("-")
+        self.settings_logs_label.setObjectName("SettingValue")
+        self.settings_logs_label.setAccessibleName("Logs directory")
+        self.settings_logs_label.setWordWrap(True)
         self.settings_logs_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
         )
-        self.settings_logs_label.setToolTip("Where run reports are saved")
-        storage_form.addRow("Logs", self.settings_logs_label)
+        card.add(
+            SettingRow(
+                "Logs",
+                "Where run reports are written.",
+                self.settings_logs_label,
+                below=True,
+            )
+        )
 
         self.settings_retention = QSpinBox()
         self.settings_retention.setRange(0, 3650)
         self.settings_retention.setSuffix(" days")
         self.settings_retention.setSpecialValueText("Keep all")
+        self.settings_retention.setFixedWidth(150)
+        self.settings_retention.setAccessibleName("Keep run logs")
         self.settings_retention.setToolTip(
             "Delete run logs older than this; 0 keeps every run log."
         )
-        storage_form.addRow("Keep run logs", self.settings_retention)
-        content_layout.addWidget(storage)
+        card.add(
+            SettingRow(
+                "Keep run logs",
+                "0 keeps every run log.",
+                self.settings_retention,
+            )
+        )
 
-        content_layout.addStretch(1)
-        scroll.setWidget(content)
-        layout.addWidget(scroll, 1)
+        comments = QLabel(
+            "Saving rewrites config.toml and removes comments you added to it."
+        )
+        comments.setObjectName("SettingHint")
+        comments.setWordWrap(True)
+        card.add_note(comments)
+        column.addWidget(card)
 
-        actions = QHBoxLayout()
-        self.reset_button = QPushButton("Reset to defaults")
-        self.reset_button.setObjectName("Ghost")
-        self.reset_button.clicked.connect(self._reset_settings)
-        actions.addWidget(self.reset_button)
-        actions.addStretch(1)
-        self.save_button = QPushButton("Save settings")
-        self.save_button.setObjectName("Primary")
-        self.save_button.clicked.connect(self._save_settings)
-        actions.addWidget(self.save_button)
-        layout.addLayout(actions)
-
-        check_row = QHBoxLayout()
-        self.check_button = QPushButton("Check folder")
-        self.check_button.clicked.connect(self._check_root)
-        check_row.addWidget(self.check_button)
-        self.check_result = QLabel("")
-        self.check_result.setObjectName("Muted")
-        check_row.addWidget(self.check_result)
-        check_row.addStretch(1)
-        layout.addLayout(check_row)
-
-        return page
+        self.settings_retention.valueChanged.connect(
+            self._on_settings_edited
+        )
 
     def _build_statusbar(self) -> None:
         bar = self.statusBar()
@@ -774,15 +967,34 @@ class MainWindow(QMainWindow):
         self._render_library()
         self._save_ui_state()
 
+    def _settings_section_toggled(self, index: int, checked: bool) -> None:
+        if not checked:
+            return
+        self._settings_section = index
+        self.settings_stack.setCurrentIndex(index)
+        self.settings_scroll.verticalScrollBar().setValue(0)
+
+    def _select_settings_section(self, index: int) -> None:
+        """Show one settings section without losing drafts in the others."""
+        if not 0 <= index < len(self.settings_nav_buttons):
+            return
+        self._settings_section = index
+        self.settings_nav_buttons[index].setChecked(True)
+        self.settings_stack.setCurrentIndex(index)
+        self.settings_scroll.verticalScrollBar().setValue(0)
+
     def _show_settings(self) -> None:
         self.settings_button.setChecked(True)
-        self._populate_settings()
+        if not self._settings_dirty:
+            self._populate_settings()
         self.stack.setCurrentWidget(self.settings_page)
+        self._select_settings_section(self._settings_section)
         self._save_ui_state()
 
     def _open_watched_settings(self) -> None:
         """Jump straight to the watched folder field."""
         self._show_settings()
+        self._select_settings_section(0)
         self.settings_root.setFocus()
         self.settings_root.selectAll()
 
@@ -1051,6 +1263,7 @@ class MainWindow(QMainWindow):
         self._loading_settings = False
         self._update_auto_controls()
         self.check_result.setText("")
+        self._set_settings_dirty(False)
 
     # ------------------------------------------------------------------ actions
 
@@ -1117,6 +1330,23 @@ class MainWindow(QMainWindow):
         if chosen:
             self.settings_root.setText(chosen)
 
+    def _on_settings_edited(self, *_args: object) -> None:
+        if not self._loading_settings:
+            self._set_settings_dirty(True)
+
+    def _set_settings_dirty(self, dirty: bool) -> None:
+        """Update the header status and the Save button for deferred fields."""
+        self._settings_dirty = dirty
+        self.settings_status.setText(
+            "● Unsaved changes" if dirty else "All changes saved"
+        )
+        self.settings_status.setProperty("dirty", dirty)
+        style = self.settings_status.style()
+        style.unpolish(self.settings_status)
+        style.polish(self.settings_status)
+        self.settings_status.update()
+        self.save_button.setEnabled(dirty)
+
     def _on_background_toggled(self, _checked: bool) -> None:
         if self._loading_settings:
             return
@@ -1162,6 +1392,7 @@ class MainWindow(QMainWindow):
                     auto_refresh_s=auto,
                 )
             except OSError as exc:
+                self._set_settings_dirty(True)
                 self._flash(f"Could not save background settings: {exc}")
         self._apply_background_mode()
         self._schedule_auto_refresh()
@@ -1176,6 +1407,8 @@ class MainWindow(QMainWindow):
     def _save_settings(self) -> None:
         root_text = self.settings_root.text().strip()
         if not root_text:
+            self._select_settings_section(0)
+            self.settings_root.setFocus()
             QMessageBox.warning(
                 self, "repopull", "The watched folder cannot be empty."
             )
@@ -1213,6 +1446,7 @@ class MainWindow(QMainWindow):
             save_config(updated, target)
             self.config = load_config(config_path=target)
         except (OSError, ConfigError) as exc:
+            self._set_settings_dirty(True)
             QMessageBox.warning(
                 self, "repopull", f"Could not save settings: {exc}"
             )
@@ -1251,9 +1485,9 @@ class MainWindow(QMainWindow):
         del blocker
         self._loading_settings = False
         self._update_auto_controls()
-        self.check_result.setText(
-            "Defaults restored; press Save settings to write them."
-        )
+        self.check_result.setText("")
+        self._set_settings_dirty(True)
+        self._flash("Defaults restored; press Save settings to write them.")
 
     def _check_root(self) -> None:
         text = self.settings_root.text().strip()

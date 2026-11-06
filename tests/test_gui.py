@@ -26,6 +26,7 @@ if HAVE_PYSIDE:
 
     from repopull.config import Config, load_config, save_config
     from repopull.gui.rows import row_view, unchecked_view
+    from repopull.gui.settings import SETTINGS_SECTIONS
     from repopull.gui.window import MainWindow
     from repopull.models import Outcome, Report, Row
     from repopull.refresh import SuspendDetector
@@ -107,6 +108,88 @@ if HAVE_PYSIDE:
                 self.assertIs(
                     window.stack.currentWidget(), window.settings_page
                 )
+                window.close()
+
+        def test_settings_is_grouped_into_sections(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                window = MainWindow(self._config(base, self._tree(base)))
+
+                self.assertEqual(
+                    tuple(button.text() for button in window.settings_nav_buttons),
+                    SETTINGS_SECTIONS,
+                )
+                self.assertEqual(
+                    window.settings_stack.count(), len(SETTINGS_SECTIONS)
+                )
+                self.assertEqual(window.settings_stack.currentIndex(), 0)
+                self.assertTrue(window.settings_nav_buttons[0].isChecked())
+                self.assertFalse(window.save_button.isEnabled())
+                self.assertEqual(
+                    window.settings_status.text(), "All changes saved"
+                )
+                window.close()
+
+        def test_settings_sections_keep_drafts_until_saved(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                config_path = base / "config.toml"
+                config = Config(
+                    root=self._tree(base),
+                    log_dir=base / "logs",
+                    delay_between_repos_s=0,
+                    update_submodules=False,
+                    config_path=config_path,
+                    root_source="test",
+                )
+                save_config(config, config_path)
+                window = MainWindow(config)
+
+                window._show_settings()
+                window.settings_max_depth.setValue(3)
+                self.assertIn("Unsaved", window.settings_status.text())
+                self.assertTrue(window.save_button.isEnabled())
+
+                window._select_settings_section(2)
+                window._select_settings_section(0)
+                window._set_filter("all")
+                window._show_settings()
+                self.assertEqual(window.settings_max_depth.value(), 3)
+
+                window._save_settings()
+                self.assertEqual(
+                    window.settings_status.text(), "All changes saved"
+                )
+                self.assertFalse(window.save_button.isEnabled())
+                self.assertEqual(
+                    load_config(config_path=config_path).max_depth, 3
+                )
+                window.close()
+
+        def test_watched_folder_link_selects_watching_section(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                window = MainWindow(self._config(base, self._tree(base)))
+                window._show_settings()
+                window._select_settings_section(3)
+
+                window._open_watched_settings()
+
+                self.assertEqual(window.settings_stack.currentIndex(), 0)
+                self.assertTrue(window.settings_nav_buttons[0].isChecked())
+                window.close()
+
+        def test_refresh_changes_do_not_use_the_save_button(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                window = MainWindow(self._config(base, self._tree(base)))
+
+                window.settings_auto.setChecked(True)
+
+                self.assertEqual(
+                    window.settings_status.text(), "All changes saved"
+                )
+                self.assertFalse(window.save_button.isEnabled())
                 window.close()
 
         def test_sidebar_brand_mark_is_loaded(self) -> None:
@@ -370,6 +453,32 @@ if HAVE_PYSIDE:
                 reloaded = load_config(config_path=config_path)
                 self.assertTrue(reloaded.background_mode)
                 self.assertTrue(window.config.background_mode)
+                window.request_quit()
+
+        def test_failed_immediate_save_keeps_settings_dirty(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                config_path = base / "config.toml"
+                config = Config(
+                    root=self._tree(base),
+                    log_dir=base / "logs",
+                    delay_between_repos_s=0,
+                    update_submodules=False,
+                    config_path=config_path,
+                )
+                save_config(config, config_path)
+                window = MainWindow(config)
+                window._tray_available = True
+                window.settings_background.setEnabled(True)
+
+                with patch(
+                    "repopull.gui.window.save_behavior_settings",
+                    side_effect=OSError("read-only"),
+                ):
+                    window.settings_background.setChecked(True)
+
+                self.assertIn("Unsaved", window.settings_status.text())
+                self.assertTrue(window.save_button.isEnabled())
                 window.request_quit()
 
         def test_network_retry_bypasses_normal_cooldown(self) -> None:

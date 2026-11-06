@@ -230,19 +230,59 @@ def stylesheet(palette: Palette = PALETTE) -> str:
         background: {p.surface};
         border-color: {p.line};
     }}
-    QGroupBox {{
+    QFrame#SettingsCard {{
         background: {p.surface};
         border: 1px solid {p.line};
         border-radius: 10px;
-        margin-top: 12px;
-        padding: 16px 12px 12px 12px;
+    }}
+    QLabel#CardHeading {{
+        color: {p.muted};
+        font-size: 11px;
+        font-weight: 700;
+    }}
+    QLabel#SettingTitle {{
+        color: {p.text};
         font-weight: 600;
     }}
-    QGroupBox::title {{
-        subcontrol-origin: margin;
-        left: 12px;
-        padding: 0 4px;
+    QLabel#SettingHint {{
         color: {p.muted};
+        font-size: 12px;
+    }}
+    QLabel#SettingValue {{
+        color: {p.text};
+    }}
+    QLabel#SettingWarning {{
+        color: {p.warn};
+        font-size: 12px;
+    }}
+    QFrame#SettingSeparator {{
+        background: {p.line};
+        border: none;
+    }}
+    QPushButton#SettingsNav {{
+        text-align: left;
+        background: transparent;
+        border: none;
+        border-radius: 8px;
+        padding: 8px 10px;
+        color: {p.muted};
+        font-weight: 500;
+    }}
+    QPushButton#SettingsNav:hover {{
+        background: {p.surface2};
+        color: {p.text};
+    }}
+    QPushButton#SettingsNav:checked {{
+        background: {p.raised};
+        color: {p.text};
+        font-weight: 600;
+    }}
+    QLabel#SettingsStatus {{
+        color: {p.muted};
+        font-size: 12px;
+    }}
+    QLabel#SettingsStatus[dirty="true"] {{
+        color: {p.warn};
     }}
     QScrollArea {{
         background: transparent;

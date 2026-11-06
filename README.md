@@ -12,7 +12,7 @@ The app watches a folder of remote third-party repositories. Then it discovers t
 
 ## Status
 
-**Current release: 0.4.6.** Tests and mypy pass; the latest AppImage is built
+**Current release: 0.4.7.** Tests and mypy pass; the latest AppImage is built
 from this checkout. No release blockers. Remaining test-coverage work is in the
 [test audit](docs/test-falsifiability.md); the 16 px icon keeps its branches at
 the cost of softness (see [branding](docs/branding.md)).
@@ -115,17 +115,16 @@ after the subcommand.
 The GUI reads the same `config.toml`, repositories, and `logs/latest.json` as the
 CLI. It shows one row per repo with a status chip, updates each row as the sweep
 progresses, supports Refresh status, Sync all, a detail page, per-repo Force sync,
-and grouped settings (watching, background & refresh, network, updates,
-storage). See [docs/gui.md](docs/gui.md).
+and settings grouped into Watching, Refresh, Network, Updates, and Storage
+sections. See [docs/gui.md](docs/gui.md).
 
-Settings → Background & refresh can keep repopull in the system tray and
-refresh status automatically. Auto-refresh is off by default, status-only,
-and never runs more often than every 5 minutes; 15 minutes or longer is
-recommended.
+Settings → Refresh can keep repopull in the system tray and refresh status
+automatically. Auto-refresh is off by default, status-only, and never runs more
+often than every 5 minutes; 15 minutes or longer is recommended.
 
 The tray icon is visible while repopull runs; the checkbox controls whether
-closing hides to it.
-Background and refresh changes apply immediately; other settings use Save.
+closing hides to it. Background and refresh changes apply immediately; other
+settings use **Save settings**, and the header shows unsaved changes.
 
 It needs PySide6. The launcher uses the system `python3` when PySide6 is
 importable, otherwise it lets `uv` provide it for that run.
@@ -134,14 +133,14 @@ importable, otherwise it lets `uv` provide it for that run.
 
 ```bash
 make appimage
-./dist/repopull-0.4.6-x86_64.AppImage
+./dist/repopull-0.4.7-x86_64.AppImage
 ```
 
 The image bundles Python 3.13, PySide6 and repopull. Run the CLI from it with
 `--cli`:
 
 ```bash
-./dist/repopull-0.4.6-x86_64.AppImage --cli status
+./dist/repopull-0.4.7-x86_64.AppImage --cli status
 ```
 
 It keeps `config.toml` and logs in `~/.config/repopull` (or `$REPOPULL_HOME`).
@@ -240,7 +239,7 @@ make test        # unit and integration tests, offline, uses temp repos
 make typecheck   # mypy --strict
 make check       # both
 make gui         # launch the optional PySide6 interface
-make appimage    # build dist/repopull-0.4.6-x86_64.AppImage
+make appimage    # build dist/repopull-0.4.7-x86_64.AppImage
 make bump        # increment the patch version
 make release     # check, bump the patch, build the AppImage
 ```
