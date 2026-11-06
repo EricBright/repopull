@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -24,6 +26,7 @@ if HAVE_PYSIDE:
     from repopull.gui.rows import row_view, unchecked_view
     from repopull.gui.window import MainWindow
     from repopull.models import Outcome, Report, Row
+    from repopull.refresh import SuspendDetector
     from repopull.report import write_log
 
 
@@ -353,6 +356,69 @@ if HAVE_PYSIDE:
                 reloaded = load_config(config_path=config_path)
                 self.assertTrue(reloaded.background_mode)
                 self.assertTrue(window.config.background_mode)
+                window.request_quit()
+
+        def test_resume_defers_auto_refresh_by_grace(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                window = MainWindow(self._config(base, self._tree(base)))
+                window.config = dataclasses.replace(
+                    window.config, auto_refresh_s=900
+                )
+                window.auto_timer.start(900_000)
+
+                window._on_resume(3_600.0)
+
+                self.assertTrue(window._resume_pending)
+                self.assertTrue(window._resume_timer.isActive())
+                self.assertEqual(window._resume_timer.interval(), 60_000)
+                self.assertFalse(window.auto_timer.isActive())
+                window.request_quit()
+
+        def test_check_suspend_triggers_grace(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                window = MainWindow(self._config(base, self._tree(base)))
+                window.config = dataclasses.replace(
+                    window.config, auto_refresh_s=900
+                )
+                window._suspend_detector = SuspendDetector(0.0)
+
+                with (
+                    patch(
+                        "repopull.gui.window._boottime", return_value=700.0
+                    ),
+                    patch(
+                        "repopull.gui.window.time.monotonic",
+                        return_value=100.0,
+                    ),
+                ):
+                    window._check_suspend()
+
+                self.assertTrue(window._resume_pending)
+                self.assertTrue(window._resume_timer.isActive())
+                window.request_quit()
+
+        def test_resume_check_starts_one_status_run(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                window = MainWindow(self._config(base, self._tree(base)))
+                window.config = dataclasses.replace(
+                    window.config, auto_refresh_s=900
+                )
+                window._resume_pending = True
+
+                with patch.object(window, "_start_run") as start:
+                    window._resume_check_due()
+
+                self.assertFalse(window._resume_pending)
+                start.assert_called_once()
+                refs = start.call_args.args[0]
+                self.assertEqual(len(refs), 3)
+                self.assertEqual(
+                    start.call_args.kwargs,
+                    {"force": False, "mode": "status", "auto": True},
+                )
                 window.request_quit()
 
         def test_close_to_tray_hides_instead_of_quitting(self) -> None:

@@ -8,6 +8,9 @@ from repopull.refresh import (
     AUTO_REFRESH_FLOOR_S,
     AUTO_REFRESH_MAX_S,
     AUTO_REFRESH_RECOMMENDED_S,
+    SUSPEND_DETECT_THRESHOLD_S,
+    SUSPEND_RESUME_GRACE_S,
+    SuspendDetector,
     clamp_auto_refresh_s,
     cooldown_remaining,
     next_delay,
@@ -77,3 +80,34 @@ class DelayTests(unittest.TestCase):
 
     def test_off_returns_zero(self) -> None:
         self.assertEqual(next_delay(0, 0), 0.0)
+
+
+class SuspendDetectorTests(unittest.TestCase):
+    def test_first_poll_is_a_baseline(self) -> None:
+        detector = SuspendDetector(0.0)
+
+        self.assertEqual(detector.poll(100.0, 100.0), 0.0)
+
+    def test_short_offset_change_is_ignored(self) -> None:
+        detector = SuspendDetector(0.0)
+
+        self.assertEqual(
+            detector.poll(100.0 + SUSPEND_DETECT_THRESHOLD_S - 1, 100.0),
+            0.0,
+        )
+        self.assertEqual(detector.poll(103.0, 100.0), 0.0)
+
+    def test_suspend_gap_is_reported_once(self) -> None:
+        detector = SuspendDetector(0.0)
+
+        self.assertEqual(detector.poll(700.0, 100.0), 600.0)
+        self.assertEqual(detector.poll(710.0, 110.0), 0.0)
+
+    def test_negative_offset_resets_baseline(self) -> None:
+        detector = SuspendDetector(50.0)
+
+        self.assertEqual(detector.poll(100.0, 200.0), 0.0)
+        self.assertEqual(detector.poll(500.0, 200.0), 300.0)
+
+    def test_resume_grace_is_a_minute(self) -> None:
+        self.assertEqual(SUSPEND_RESUME_GRACE_S, 60.0)

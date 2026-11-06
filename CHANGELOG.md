@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Detect resume from suspend with `CLOCK_BOOTTIME` versus `CLOCK_MONOTONIC`;
+  wait 60 seconds for the desktop and network to settle, then run one status
+  check instead of queueing missed intervals.
+- Corrected the README and GUI limitations, and added an authorship note.
+
 ## 0.4.3 — 2026-11-05
 
 - Background mode and automatic refresh now apply and persist immediately

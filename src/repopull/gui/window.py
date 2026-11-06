@@ -57,6 +57,9 @@ from repopull.gui.rows import RepoRow, RowView, row_view, unchecked_view
 from repopull.models import Outcome, RepoRef, Report, Row
 from repopull.refresh import (
     AUTO_REFRESH_JITTER_S,
+    SUSPEND_POLL_INTERVAL_S,
+    SUSPEND_RESUME_GRACE_S,
+    SuspendDetector,
     clamp_auto_refresh_s,
     cooldown_remaining,
     next_delay,
@@ -72,6 +75,17 @@ from repopull.sync import (
     status_report,
     sync_report,
 )
+
+
+def _boottime() -> float | None:
+    """Seconds since boot including suspend, when the platform exposes it."""
+    clock = getattr(time, "CLOCK_BOOTTIME", None)
+    if clock is None:
+        return None
+    try:
+        return time.clock_gettime(clock)
+    except OSError:
+        return None
 
 
 class MainWindow(QMainWindow):
@@ -101,6 +115,21 @@ class MainWindow(QMainWindow):
         self.auto_timer = QTimer(self)
         self.auto_timer.setSingleShot(True)
         self.auto_timer.timeout.connect(self._auto_refresh_due)
+        boottime = _boottime()
+        self._suspend_detector: SuspendDetector | None = (
+            SuspendDetector(max(0.0, boottime - time.monotonic()))
+            if boottime is not None
+            else None
+        )
+        self.suspend_timer = QTimer(self)
+        self.suspend_timer.setInterval(int(SUSPEND_POLL_INTERVAL_S * 1000))
+        self.suspend_timer.timeout.connect(self._check_suspend)
+        if self._suspend_detector is not None:
+            self.suspend_timer.start()
+        self._resume_timer = QTimer(self)
+        self._resume_timer.setSingleShot(True)
+        self._resume_timer.timeout.connect(self._resume_check_due)
+        self._resume_pending = False
         self._auto_run = False
         self._auto_paused = False
         self._auto_failures = 0
@@ -1130,6 +1159,9 @@ class MainWindow(QMainWindow):
 
     def _begin_quit(self) -> None:
         self.auto_timer.stop()
+        self.suspend_timer.stop()
+        self._resume_timer.stop()
+        self._resume_pending = False
         if self._quit_requested:
             if self.task is None:
                 self._quit_application()
@@ -1220,6 +1252,8 @@ class MainWindow(QMainWindow):
             )
         if paused:
             self.auto_timer.stop()
+            self._resume_timer.stop()
+            self._resume_pending = False
         else:
             self._schedule_auto_refresh()
         self._update_tray_tooltip()
@@ -1235,6 +1269,11 @@ class MainWindow(QMainWindow):
             or self._quit_requested
             or self._auto_paused
         ):
+            self.auto_timer.stop()
+            self._resume_timer.stop()
+            self._resume_pending = False
+            return
+        if self._resume_pending:
             self.auto_timer.stop()
             return
         now = time.monotonic()
@@ -1257,6 +1296,9 @@ class MainWindow(QMainWindow):
             or self._auto_paused
         ):
             return
+        self._check_suspend()
+        if self._resume_pending:
+            return
         if self.task is not None:
             self.auto_timer.start(60_000)
             return
@@ -1271,6 +1313,49 @@ class MainWindow(QMainWindow):
                 int((remaining + self._jitter_seconds()) * 1000)
             )
             return
+        if not self.refs:
+            self._schedule_auto_refresh()
+            return
+        self._start_run(self.refs, force=False, mode="status", auto=True)
+
+    def _check_suspend(self) -> None:
+        detector = self._suspend_detector
+        boottime = _boottime() if detector is not None else None
+        if detector is None or boottime is None or self._quit_requested:
+            return
+        gap = detector.poll(boottime, time.monotonic())
+        if gap > 0:
+            self._on_resume(gap)
+
+    def _on_resume(self, gap_s: float) -> None:
+        """Defer one status check until the desktop has settled."""
+        if (
+            self._quit_requested
+            or self.config.auto_refresh_s <= 0
+            or self._auto_paused
+        ):
+            return
+        self.auto_timer.stop()
+        self._resume_pending = True
+        self._resume_timer.start(int(SUSPEND_RESUME_GRACE_S * 1000))
+        minutes = max(1, round(gap_s / 60))
+        self._flash(f"Resumed after {minutes} min; checking in 60 s…")
+
+    def _resume_check_due(self) -> None:
+        if (
+            self._quit_requested
+            or self.config.auto_refresh_s <= 0
+            or self._auto_paused
+        ):
+            self._resume_pending = False
+            return
+        if self.task is not None:
+            # The pre-sleep run is still winding down; let it finish first.
+            self._resume_timer.start(15_000)
+            return
+        self._resume_pending = False
+        self._reload_refs()
+        self._render_library()
         if not self.refs:
             self._schedule_auto_refresh()
             return
@@ -1302,6 +1387,8 @@ class MainWindow(QMainWindow):
             return
         if not auto:
             self.auto_timer.stop()
+            self._resume_timer.stop()
+            self._resume_pending = False
         self._auto_run = auto
         self._set_busy(True)
         config = self.config

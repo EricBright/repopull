@@ -55,7 +55,10 @@ the library then fills. Nothing is hard-coded into the app.
   Normal minimize stays in
   the taskbar. **Refresh status automatically** is status-only, off by default,
   has a 5-minute hard floor, and shows an orange warning below 15 minutes. A
-  manual status or sync resets the next automatic run.
+  manual status or sync resets the next automatic run. On Linux, when automatic
+  refresh is on, a wake from suspend is detected and the app waits 60 seconds for
+  the desktop and network to settle before running one status check; missed
+  intervals are not queued. If a run was in flight, that run finishes first.
   With background mode on, the symbolic tray menu offers Open, Refresh status
   now, Pause/Resume automatic refresh, and Quit. Quit waits for the current
   repository and releases the locks. A second GUI launch refuses to start.
@@ -80,9 +83,11 @@ holds the same `logs/.lock` as the CLI, so two runs cannot overlap.
 
 ## Limitations (prototype)
 
-- No tray icon or notifications yet.
+- No desktop notifications.
 - No per-repository selection for a normal sync; use Sync all, or Force sync one.
-- Saving settings rewrites `config.toml` and drops hand-written comments.
+- Saving general settings rewrites `config.toml` and drops hand-written
+  comments; background and refresh changes use a targeted writer that preserves
+  them.
 - The window is dark-only.
 - Keyboard navigation is basic.
 

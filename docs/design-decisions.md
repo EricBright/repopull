@@ -308,4 +308,26 @@ single-instance. With background mode off, closing quits.
 stays in the taskbar; only close goes to the tray. The user always has an
 explicit Quit path. See [gui.md](gui.md).
 
+## 25. A suspend resumes with one settled status check
+
+**Context:** A laptop may sleep for hours. The scheduler must not queue every
+missed interval, must not start while the network is still coming back, and must
+not treat a wall-clock jump as elapsed work. CPU load and network throughput are
+tempting readiness signals, but both can be idle while the link is unusable, and
+waiting for "calm" can be indefinite.
+
+**Decision:** On Linux, detect a suspend by comparing `CLOCK_BOOTTIME` with
+`CLOCK_MONOTONIC`; the difference is the time spent suspended. A gap of 5 s or
+more is a resume; platforms without `CLOCK_BOOTTIME` simply skip the gate. When
+automatic refresh is on, cancel the pending timer, wait a fixed 60 s settle
+period, then run one status check. An in-flight run finishes first. We do not
+gate on CPU load, Wi-Fi traffic, or NetworkManager state: a fixed grace is simple
+and deterministic, and the normal fetch timeout plus failure backoff covers a
+network that is still down.
+
+**Consequences:** A wake produces one resume check, not a catch-up sweep. The
+check lands about 60–90 s after wake (30 s poll plus 60 s grace), and it may still
+fail if the network is not back; the usual backoff applies. The trade-off is a
+short stale window instead of a burst of fetches.
+
 For the full documentation index, see [README.md](../README.md#documentation-index).

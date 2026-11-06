@@ -1,14 +1,14 @@
-![The repopull mark](src/repopull/gui/assets/repopull-512.png)
+<p align="center">
+  <img src="src/repopull/gui/assets/repopull-128.png"
+       alt="The repopull mark" width="128">
+</p>
 
 # repopull
 
-Keep local mirrors of third-party repositories current with their remotes —
+The purpose of this app is to keep local mirrors of third-party repositories current with their remotes —
 safely, politely, and without ever touching the remotes.
 
-You watch a folder of third-party repositories you do not own and are not a
-contributor to. This tool discovers them, fetches each remote **one at a time**,
-fast-forwards what can be fast-forwarded, and tells you exactly what happened. It
-never pushes, commits, branches, tags, or opens a pull request.
+The app watches a folder of remote third-party repositories. Then it discovers them, fetches each remote **one at a time**, fast-forwards what can be fast-forwarded, and tells you exactly what happened. It never pushes, commits, branches, tags, or opens a pull request.
 
 ## Status
 
@@ -17,11 +17,9 @@ from this checkout. No release blockers. Remaining test-coverage work is in the
 [test audit](docs/test-falsifiability.md); the 16 px icon keeps its branches at
 the cost of softness (see [branding](docs/branding.md)).
 
-## The problem
+## The problem the app tries to address
 
-The watched repos change constantly. Pulling each one by hand means remembering
-where they are, which branch each uses, which ones are dirty, and which have
-force-pushed. `repopull` does that sweep in one pass and gives you a decision-ready
+Since the remote repos might be under heavy development, they might change frequently. As a result, the local, watched repos also must change constantly. Pulling each one by hand means remembering where they are, which branch each uses, which ones are dirty, and which have force-pushed. `repopull` does that sweep in one pass and gives you a decision-ready
 brief instead of one terminal per repo.
 
 ## Where the link lives
@@ -108,7 +106,7 @@ after the subcommand.
 
 ## Desktop GUI (optional)
 
-![The repopull library](docs/previews/gui-library.png)
+![The repopull library](docs/previews/gui-library.webp)
 
 ```bash
 ./bin/repopull-gui
@@ -324,6 +322,20 @@ mount the disk, copy [`config.example.toml`](config.example.toml) to
 - Does not clone missing repositories; it only syncs what exists.
 - Does not switch branches or fetch branches other than the current tracking branch.
 - Does not install `git-lfs`.
-- No scheduling or notifications yet; the CLI is ready for a systemd timer.
-- The GUI is a prototype: no tray, no per-repository normal-sync selection, dark-only.
-- Not intended for repositories you own or contribute to — there is no push path.
+- The CLI has no scheduler; the GUI's status-only automatic refresh runs only while the app is running.
+- No desktop notifications; status is in the window, tray, and logs.
+- The GUI is still a dark-only prototype, with no per-repository normal-sync selection.
+- Not intended for repositories you own or contribute to, since there is no push path.
+
+## License
+
+repopull is licensed under the GNU Affero General Public License v3.0; see
+[LICENSE](LICENSE).
+
+Its GUI and background-work patterns were inspired by
+[AppGlider](https://github.com/Vyrnexis/AppGlider), a Python/PySide6 AppImage
+manager; notes are in
+[docs/appglider-lessons.md](docs/appglider-lessons.md). AppGlider is not a
+dependency; no AppGlider code is included.
+
+Authorship: [AUTHORS.md](AUTHORS.md).
