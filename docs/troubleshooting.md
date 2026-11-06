@@ -12,8 +12,8 @@ git -C <path-to-repo> reset --hard origin/<branch>
 **A repo reports "uses Git LFS but git-lfs is not installed" or "not enabled".**
 Git LFS stores large files outside normal Git history. In the GUI, open
 **Settings → Updates → Git LFS → Help…** for the install command for your
-distribution; then run `git lfs install` once and click **Refresh status**.
-From the CLI:
+distribution; then run `git lfs install` once and press **Check again** in
+Settings → Updates (or reopen Settings). From the CLI:
 
 ```bash
 brew install git-lfs      # Bazzite/Fedora atomic; use your package manager elsewhere

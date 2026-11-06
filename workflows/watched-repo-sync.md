@@ -17,6 +17,8 @@ Never push, commit, branch, tag, open a PR, or modify a remote.
 - **Primary:** the user runs `repopull` and picks an action from the menu.
 - **Secondary (future, not built):** a systemd timer may run
   `repopull sync --all --json`. The CLI is non-interactive, so this needs no redesign.
+- The GUI's optional automatic status refresh is separate: it never syncs, so
+  this loop's trigger remains manual.
 
 ## Preconditions
 
@@ -115,7 +117,8 @@ is old.
 
 ### 6. Brief
 
-Counts-only table, one row per repository:
+Counts-only table, one row per repository. This example is from an earlier run,
+before Git LFS was installed:
 
 ```
 Repository                    Branch   Status      Commits  Detail

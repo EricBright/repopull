@@ -55,8 +55,9 @@ chooses force, which is the intended safety trade-off.
 **Context:** Dozens of repositories on a shared network. The user asked not to
 hammer GitHub.
 
-**Decision:** One fetch at a time, `0.5 s` default pause, no retries, per-command
-timeouts. A failure is recorded and the sweep continues.
+**Decision:** One fetch at a time, `0.5 s` default pause, no retries within a
+sweep, and per-command timeouts. A failure is recorded and the sweep continues.
+(Automatic status refresh later got its own retry ladder in decision 26.)
 
 **Consequences:** A full run is slower than a parallel one but predictable and
 polite. The delay and timeouts are configurable.

@@ -13,9 +13,10 @@ The app watches a folder of remote third-party repositories. Then it discovers t
 ## Status
 
 **Current release: 0.4.10.** Tests and mypy pass; the latest AppImage is built
-from this checkout. No release blockers. Remaining test-coverage work is in the
-[test audit](docs/test-falsifiability.md); the 16 px icon keeps its branches at
-the cost of softness (see [branding](docs/branding.md)).
+from this checkout. No release blockers. The historical
+[test audit](docs/test-falsifiability.md) covers 0.2.3 and has not been rerun
+against the current suite; the 16 px icon keeps its branches at the cost of
+softness (see [branding](docs/branding.md)).
 
 ## The problem the app tries to address
 
@@ -85,8 +86,8 @@ ln -s "$PWD/bin/repopull" ~/bin/repopull
 
 ## Command line
 
-The menu is a wrapper around the same non-interactive commands, so a future timer
-needs no redesign.
+The menu is a wrapper around the same non-interactive commands, so the CLI stays
+scriptable. Automatic status refresh is GUI-only and never syncs.
 
 ```bash
 ./repopull.sh where                                  # config file, root, exists?
@@ -174,7 +175,8 @@ it will reset.
 
 ## The brief
 
-Counts only, one row per repository:
+Counts only, one row per repository. This example is from an earlier run, before
+Git LFS was installed:
 
 ```
 status — 2026-11-05 16:11:23
@@ -213,6 +215,7 @@ require_git_lfs_for_lfs_repos = true
 log_retention_days = 30
 background_mode = false
 auto_refresh_s = 0
+auto_refresh_pause_when_hidden = false
 ```
 
 ## Project layout
@@ -230,7 +233,7 @@ auto_refresh_s = 0
 | `docs/previews/` | Screenshots used in the docs. |
 | `tests/` | Unit and integration tests (throwaway git repos). |
 | `workflows/` | The loop spec this tool implements. |
-| `NOTES.md` | Facts about the watched world and its terminology. |
+| `NOTES.md` | Original 2026-11-05 survey of the watched world and terminology. |
 | `Makefile` | `make test`, `make typecheck`, `make gui`, `make appimage`. |
 
 ## Development
@@ -262,8 +265,9 @@ Runtime is Python 3.11+ with **no third-party packages**. Type checking needs
 | File | Audience | Tier | Read it when | Purpose |
 |---|---|---|---|---|
 | [README.md](README.md) | Operator | always | starting any session | Quick start, status, and this index |
-| [NOTES.md](NOTES.md) | Domain expert | on-demand | you need the watched world or toolchain | Repo survey, machine facts, terminology |
+| [NOTES.md](NOTES.md) | Domain expert | on-demand | you need the original 2026-11-05 survey or terminology | Repo survey, machine facts, terminology |
 | [CHANGELOG.md](CHANGELOG.md) | Maintainer | on-demand | checking what changed in a release | Release history |
+| [AUTHORS.md](AUTHORS.md) | Domain expert | on-demand | checking authorship or contribution credit | Authorship and contribution credit |
 | [docs/architecture.md](docs/architecture.md) | Maintainer | on-demand | changing the core or tests | Modules, state model, sync flow, test map |
 | [docs/configuration.md](docs/configuration.md) | Operator | on-demand | changing settings or CLI behaviour | Keys, environment, commands, exit codes |
 | [docs/gui.md](docs/gui.md) | Operator | on-demand | using the desktop interface | Window, settings, LFS help |
@@ -272,7 +276,7 @@ Runtime is Python 3.11+ with **no third-party packages**. Type checking needs
 | [docs/packaging.md](docs/packaging.md) | Maintainer | on-demand | building or debugging the AppImage | Build, runtime, pins, layout |
 | [docs/branding.md](docs/branding.md) | Maintainer | on-demand | changing or regenerating icons | Mark, optical cuts, assets, rebuild |
 | [docs/design-decisions.md](docs/design-decisions.md) | Domain expert | on-demand | asking why, or weighing an alternative | Decision records and rejected paths |
-| [docs/appglider-lessons.md](docs/appglider-lessons.md) | Domain expert | on-demand | researching GitHub API limits or GUI direction | AppGlider findings and sources |
+| [docs/appglider-lessons.md](docs/appglider-lessons.md) | Domain expert | on-demand | researching GitHub API limits or the original GUI direction | 2026-11-05 AppGlider findings and sources |
 | [docs/test-falsifiability.md](docs/test-falsifiability.md) | Maintainer | on-demand | assessing test strength or coverage | Mutation/sabotage audit at 0.2.3 |
 | [docs/auto-refresh-plan.md](docs/auto-refresh-plan.md) | Maintainer | on-demand | reviewing the shipped 0.4.3 resident refresh/tray work | Historical 0.4.3 plan and session handoff |
 | [workflows/watched-repo-sync.md](workflows/watched-repo-sync.md) | Operator | on-demand | implementing or operating the sync loop | Loop spec, safety rules, acceptance |

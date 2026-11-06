@@ -11,6 +11,7 @@ PROSE_DOCS = (
     Path("README.md"),
     Path("NOTES.md"),
     Path("CHANGELOG.md"),
+    Path("AUTHORS.md"),
     *sorted(Path("docs").rglob("*.md")),
     *sorted(Path("workflows").rglob("*.md")),
 )

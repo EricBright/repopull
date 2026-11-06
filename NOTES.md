@@ -1,7 +1,11 @@
 # NOTES — remote-repo-pull-automation
 
+> Historical snapshot from 2026-11-05. It is kept for the original survey and
+> terminology; current settings and behavior live in [README.md](README.md) and
+> [docs/](docs/).
+
 Raw notes on the user's world, tools, and terminology. Decisions live in
-`workflows/*.md`; this file is the factual substrate.
+`workflows/*.md`; this file is the original factual substrate.
 
 ## The world (surveyed 2026-11-05)
 
@@ -18,13 +22,14 @@ Raw notes on the user's world, tools, and terminology. Decisions live in
 - **Remotes**: every repo has exactly one remote, `origin`. No forks/upstreams configured.
 - **Branches in use**: `main` for almost all; `master` for `logseq`; `develop`
   for `fieldcraft`.
-- **Dirty now**: `egui` — one modified file, an LFS-tracked PNG
+- **Dirty at survey time**: `egui` — one modified file, an LFS-tracked PNG
   (`tests/egui_tests/tests/snapshots/visuals/text_edit_prefix_suffix.png`).
-- **Git LFS**: `egui` tracks `*.png`/`*.gif` via LFS, but **`git-lfs` is not installed**
-  (`git lfs` → unknown command). LFS files may currently be pointer files or
-  smudged blobs of unknown state.
+- **Git LFS**: `egui` tracks `*.png`/`*.gif` via LFS, but **`git-lfs` was not
+  installed at survey time** (`git lfs` → unknown command). It was installed
+  later; current status is in Settings → Updates.
 - **Submodules**: `VoiceStudio` declares `omnivoice-gallery`
-  (https://github.com/debpalash/omnivoice-gallery.git), currently **uninitialized**.
+  (https://github.com/debpalash/omnivoice-gallery.git), **uninitialized at
+  survey time**.
 - **No shallow clones**, no other worktrees, no multiple remotes.
 
 ## Toolchain on the machine
@@ -32,14 +37,14 @@ Raw notes on the user's world, tools, and terminology. Decisions live in
 - git 2.56.0
 - Python 3.15.0, `uv` available, `curses` available
 - `fzf` and `gum` installed; `rich`, `pipx`, `dialog`, `whiptail` absent
-- git-lfs **absent**
+- git-lfs **absent at survey time** (installed later)
 
 ## User's relationship to the repos
 
 - User is **not** an owner, maintainer, or contributor of any repo.
 - Local copies exist **only to watch/sync** remote development.
 - Therefore: **no push, no PRs, no branch creation, no commits** by this tooling.
-- Local edits are not expected, but one dirty file currently exists.
+- Local edits are not expected, but one dirty file existed at survey time.
 
 ## Terminology
 
@@ -61,8 +66,11 @@ The full specification lives in `workflows/watched-repo-sync.md`; rationale is i
 - Submodules → updated after a successful pull.
 - LFS → repos skipped when Git LFS is not ready (binary missing or filters not
   enabled).
-- Network → sequential, 0.5 s between fetches, no retries, timeouts.
-- Trigger → manual menu now; the CLI is ready for a systemd timer later.
+- Network → sequential, 0.5 s between fetches, no retries within a sweep, and
+  timeouts. Automatic status refresh later added the 2/5/15/30/60 minute
+  network retry ladder.
+- Trigger → manual menu at survey time. GUI status-only automatic refresh was
+  added later; the CLI still has no scheduler.
 - Brief → counts only, with skip/error reasons, logged to `logs/`.
 
 ## Operational surface (2026-11-05)

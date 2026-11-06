@@ -4,7 +4,7 @@
 the same repositories, and the same `logs/latest.json` as the CLI. A run from
 either is visible to the other.
 
-![The repopull library](previews/gui-library.png)
+![The repopull library](previews/gui-library.webp)
 
 ## Run it
 
@@ -123,7 +123,7 @@ repositories; Force sync is the only destructive path and asks first. Updates
 are refused if the repository path no longer resolves inside the watched root.
 The GUI holds the same `logs/.lock` as the CLI, so two runs cannot overlap.
 
-## Limitations (prototype)
+## Limitations
 
 - No desktop notifications.
 - No per-repository selection for a normal sync; use Sync all, or Force sync one.

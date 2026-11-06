@@ -1,10 +1,14 @@
 # AppGlider lessons: GitHub's allowance and a GUI direction
 
+> Historical research note from 2026-11-05. The GUI and many of these ideas now
+> exist; this remains the source-linked research record.
+
 Notes from reading [AppGlider](https://github.com/Vyrnexis/AppGlider) (a Python +
 PySide6 AppImage manager) on 2026-11-05. Two questions: how does it stay inside
 GitHub's request allowance, and how is its interface put together?
 
-This is a design note, not a dependency. Nothing here changes `repopull` yet.
+This was a design note, not a dependency. The GUI now exists; this remains the
+research record.
 
 ## 1. GitHub's allowance — what is actually true
 

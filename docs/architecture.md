@@ -96,7 +96,9 @@ Order of checks matters:
 
 - One fetch at a time, never parallel.
 - `delay_between_repos_s` (default 0.5 s) between fetches.
-- No retries: a failure is reported and the sweep continues.
+- No per-repository retry: a single failure is reported and the sweep continues;
+  two consecutive network-level failures stop it. Automatic status refresh has
+  its own 2/5/15/30/60 minute network retry ladder.
 - `--prune --quiet --no-progress` keeps output and ref churn minimal.
 - `GIT_TERMINAL_PROMPT=0` and `GIT_ASKPASS=/bin/true` make an interactive
   credential prompt impossible, so an unattended run can never hang.
@@ -128,6 +130,10 @@ writing a separate JSON file.
   predicates/counts, run lock.
 - `tests/test_diagnostics.py`, `tests/test_cli.py`, `tests/test_gui.py` —
   path/root advice, CLI exit paths, offscreen GUI.
+- `tests/test_refresh.py` — interval clamps, delay/backoff, suspend detection,
+  and the pure automatic-refresh decision table.
+- `tests/test_rootstate.py`, `tests/test_uistate.py` — root identity and
+  remembered GUI state.
 - `tests/test_selection.py`, `tests/test_version.py` — menu parser and version
   consistency.
 - `tests/test_icons.py`, `tests/test_docs.py` — icon assets/window icon; README
@@ -150,6 +156,7 @@ audit records the totals.
 | `rows.py` | Repository row and status chip |
 | `lfs_help.py` | Read-only Git LFS install/enable dialog |
 | `jobs.py` | `RunTask(QRunnable)` holding the same lock; Qt signals |
+| `settings.py` | Settings cards, title/hint rows, and section widgets |
 | `theme.py` | Palette tokens and generated stylesheet |
 | `assets/` | B1t icon family (display and small optical cuts) and the sidebar mark; see [branding.md](branding.md) |
 
