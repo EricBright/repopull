@@ -115,6 +115,9 @@ Tray:
 - 2026-11-05: Phase 1 complete — atomic report writes, lock regression
   coverage, graceful close/quit, single-instance guard.
 - Phase 2 next.
+- 2026-11-05: Phase 2 complete — pure refresh policy, `background_mode`
+  and `auto_refresh_s` config, floor/max clamping, scheduler tests.
+- Phase 3 next.
 
 ## Phases
 

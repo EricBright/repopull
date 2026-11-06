@@ -10,6 +10,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Final
 
+from repopull.refresh import clamp_auto_refresh_s
+
 DEFAULT_ROOT: Final[Path | None] = None
 """No watched folder is assumed; the user chooses one on first run."""
 
@@ -23,6 +25,8 @@ _KNOWN_KEYS: Final[frozenset[str]] = frozenset(
         "delay_between_repos_s",
         "update_submodules",
         "require_git_lfs_for_lfs_repos",
+        "background_mode",
+        "auto_refresh_s",
         "log_dir",
         "log_retention_days",
     }
@@ -58,6 +62,8 @@ class Config:
     delay_between_repos_s: float = 0.5
     update_submodules: bool = True
     require_git_lfs_for_lfs_repos: bool = True
+    background_mode: bool = False
+    auto_refresh_s: int = 0
     log_dir: Path = field(default_factory=lambda: project_home() / "logs")
     log_retention_days: int = 30
     # Provenance, so the tool can explain where it is pointing and why.
@@ -153,6 +159,17 @@ def load_config(
     if not log_dir.is_absolute():
         log_dir = project_home() / log_dir
 
+    raw_auto_refresh = _as_non_negative_int(
+        data.get("auto_refresh_s", 0), "auto_refresh_s"
+    )
+    auto_refresh_s = clamp_auto_refresh_s(raw_auto_refresh)
+    if raw_auto_refresh != auto_refresh_s:
+        print(
+            "repopull: auto_refresh_s clamped from "
+            f"{raw_auto_refresh} to {auto_refresh_s}",
+            file=sys.stderr,
+        )
+
     raw_ignore = data.get("ignore", [])
     if not isinstance(raw_ignore, list) or not all(
         isinstance(item, str) for item in raw_ignore
@@ -180,6 +197,10 @@ def load_config(
                 data.get("require_git_lfs_for_lfs_repos", True),
                 "require_git_lfs_for_lfs_repos",
             ),
+            background_mode=_as_bool(
+                data.get("background_mode", False), "background_mode"
+            ),
+            auto_refresh_s=auto_refresh_s,
             log_dir=log_dir,
             log_retention_days=_as_non_negative_int(
                 data.get("log_retention_days", 30), "log_retention_days"
@@ -220,6 +241,8 @@ def save_config(config: Config, path: Path) -> None:
             f"update_submodules = {str(config.update_submodules).lower()}",
             "require_git_lfs_for_lfs_repos = "
             f"{str(config.require_git_lfs_for_lfs_repos).lower()}",
+            f"background_mode = {str(config.background_mode).lower()}",
+            f"auto_refresh_s = {config.auto_refresh_s}",
             f"log_dir = {json.dumps(str(config.log_dir))}",
             f"log_retention_days = {config.log_retention_days}",
             "",

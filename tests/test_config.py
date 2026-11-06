@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import io
 import os
 import tempfile
 import unittest
+from contextlib import redirect_stderr
 from pathlib import Path
 from unittest.mock import patch
 
@@ -46,6 +48,8 @@ class SaveConfigTests(unittest.TestCase):
             self.assertIsNone(loaded.root)
             self.assertEqual(loaded.root_source, "not configured")
             self.assertEqual(loaded.log_retention_days, 30)
+            self.assertFalse(loaded.background_mode)
+            self.assertEqual(loaded.auto_refresh_s, 0)
 
     def test_negative_log_retention_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -61,6 +65,30 @@ class SaveConfigTests(unittest.TestCase):
             path.write_text("log_retention_days = 0\n", encoding="utf-8")
 
             self.assertEqual(load_config(config_path=path).log_retention_days, 0)
+
+    def test_auto_refresh_is_clamped_up_to_the_floor(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.toml"
+            path.write_text("auto_refresh_s = 60\n", encoding="utf-8")
+            stderr = io.StringIO()
+
+            with redirect_stderr(stderr):
+                loaded = load_config(config_path=path)
+
+            self.assertEqual(loaded.auto_refresh_s, 300)
+            self.assertIn("clamped", stderr.getvalue())
+
+    def test_auto_refresh_above_max_is_clamped_down(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.toml"
+            path.write_text("auto_refresh_s = 999999\n", encoding="utf-8")
+            stderr = io.StringIO()
+
+            with redirect_stderr(stderr):
+                loaded = load_config(config_path=path)
+
+            self.assertEqual(loaded.auto_refresh_s, 86_400)
+            self.assertIn("clamped", stderr.getvalue())
 
     def test_save_without_root_writes_template(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -90,6 +118,8 @@ class SaveConfigTests(unittest.TestCase):
                 log_dir=base / "logs",
                 delay_between_repos_s=1.5,
                 log_retention_days=7,
+                background_mode=True,
+                auto_refresh_s=900,
                 update_submodules=False,
                 require_git_lfs_for_lfs_repos=False,
                 config_path=path,
@@ -103,6 +133,8 @@ class SaveConfigTests(unittest.TestCase):
             self.assertEqual(loaded.root, config.root)
             self.assertEqual(loaded.log_dir, config.log_dir)
             self.assertEqual(loaded.log_retention_days, 7)
+            self.assertTrue(loaded.background_mode)
+            self.assertEqual(loaded.auto_refresh_s, 900)
             self.assertAlmostEqual(loaded.delay_between_repos_s, 1.5)
             self.assertFalse(loaded.update_submodules)
             self.assertFalse(loaded.require_git_lfs_for_lfs_repos)
