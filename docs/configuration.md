@@ -26,7 +26,10 @@ The last filesystem identity and repository count are kept in
 with the device number as a fallback, and refuses a different filesystem at the
 same path or an unexpectedly empty root. A reboot can change a device number
 without changing the disk (btrfs uses an anonymous `0:N` device); the UUID keeps
-that from looking like a replacement.
+that from looking like a replacement. An unreadable, malformed, or newer-version
+state file is reported and left in place rather than overwritten. Repair is
+offered only when the current root still contains at least one repository; an
+intentionally empty root requires removing the state file explicitly.
 
 A state file written by 0.4.14 or earlier has no UUID, so its first device
 change may still be refused. Repair it with **Repair saved root state** in the

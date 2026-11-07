@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.4.16 — 2026-11-07
+
+- Root-state checks now save the identity they actually verified instead of
+  reading the filesystem a second time. A remount between check and write can no
+  longer bless an unseen disk.
+- A transient UUID lookup failure preserves the previous UUID and mount source
+  instead of downgrading the state to device-only comparison.
+- Repair is refused when the current root contains no repositories, so an empty
+  disk cannot replace a positive saved count and disable the empty-root guard.
+- Malformed, unreadable, and newer-version state files are reported and left in
+  place instead of being overwritten. The GUI again tells users which state file
+  to remove when a mismatch is not repairable.
+- Root-state writes now use a unique temporary file, and `repair-root` holds the
+  same run lock as status/sync.
+- The GUI's root-state read and check now run in the discovery worker instead of
+  the UI thread.
+- Split mount probing into `mounts.py`; `rootstate.py` now owns only persistence
+  and comparison. The comparison takes one `RootIdentity`, and the test-only
+  wrappers `verify_root_state` and `load_root_state` are gone.
+
 ## 0.4.15 — 2026-11-07
 
 - Watched-root identity now uses the filesystem UUID and mount source, with the

@@ -26,13 +26,13 @@ from repopull.report import (
     render_report,
     report_to_dict,
 )
+from repopull.mounts import root_identity
 from repopull.rootstate import (
     ROOT_STATE_FILE,
     check_root_state,
     describe_identity,
     describe_state,
-    load_root_state,
-    root_identity,
+    read_root_state,
     save_root_state,
 )
 from repopull.runtime import LockError, run_lock
@@ -125,7 +125,8 @@ def _progress(index: int, total: int, label: str) -> None:
     print(f"[{index}/{total}] fetching {label}", file=sys.stderr, flush=True)
 
 
-def _select_refs(config: Config, patterns: Sequence[str]) -> list[RepoRef] | None:
+def _discover_or_fail(config: Config) -> tuple[Path, list[RepoRef]] | None:
+    """Resolve the watched root and discover repositories, or explain why not."""
     root = config.root
     if root is None:
         print("repopull: no watched folder configured", file=sys.stderr)
@@ -139,6 +140,14 @@ def _select_refs(config: Config, patterns: Sequence[str]) -> list[RepoRef] | Non
         print(f"repopull: {exc}", file=sys.stderr)
         print(missing_root_advice(config), file=sys.stderr)
         return None
+    return root, refs
+
+
+def _select_refs(config: Config, patterns: Sequence[str]) -> list[RepoRef] | None:
+    discovered = _discover_or_fail(config)
+    if discovered is None:
+        return None
+    root, refs = discovered
 
     check = check_root_state(config.log_dir, root, len(refs))
     if check.problem is not None:
@@ -185,19 +194,10 @@ def _select_refs(config: Config, patterns: Sequence[str]) -> list[RepoRef] | Non
 
 def _repair_root(config: Config, *, assume_yes: bool) -> int:
     """Show or accept the watched folder's current filesystem identity."""
-    root = config.root
-    if root is None:
-        print("repopull: no watched folder configured", file=sys.stderr)
-        print(missing_root_advice(config), file=sys.stderr)
+    discovered = _discover_or_fail(config)
+    if discovered is None:
         return 2
-    try:
-        refs = discover_repos(
-            root, max_depth=config.max_depth, ignore=config.ignore
-        )
-    except DiscoveryError as exc:
-        print(f"repopull: {exc}", file=sys.stderr)
-        print(missing_root_advice(config), file=sys.stderr)
-        return 2
+    root, refs = discovered
     if not refs:
         print(
             "repopull: cannot repair the root state: no repositories found "
@@ -212,7 +212,14 @@ def _repair_root(config: Config, *, assume_yes: bool) -> int:
     except OSError as exc:
         return _fail(f"cannot inspect {root}: {exc}")
 
-    previous = load_root_state(config.log_dir)
+    loaded = read_root_state(config.log_dir)
+    previous = loaded.state
+    if loaded.problem is not None:
+        print(f"repopull: {loaded.problem}", file=sys.stderr)
+        print(
+            "repopull: `repair-root --yes` will replace the unusable state.",
+            file=sys.stderr,
+        )
     print(f"watched folder: {root}")
     print(f"saved identity: {describe_state(previous)}")
     print(f"current identity: {describe_identity(current)}")
@@ -223,7 +230,13 @@ def _repair_root(config: Config, *, assume_yes: bool) -> int:
         )
         return 0
     try:
-        save_root_state(config.log_dir, root, len(refs))
+        save_root_state(
+            config.log_dir,
+            root,
+            len(refs),
+            identity=current,
+            previous=previous,
+        )
     except OSError as exc:
         return _fail(
             f"could not write {config.log_dir / ROOT_STATE_FILE}: {exc}"
@@ -271,7 +284,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     if args.command == "repair-root":
-        return _repair_root(config, assume_yes=bool(args.yes))
+        problem = check_log_dir(config.log_dir)
+        if problem is not None:
+            return _fail(problem)
+        try:
+            with run_lock(config.log_dir):
+                return _repair_root(config, assume_yes=bool(args.yes))
+        except LockError as exc:
+            return _fail(str(exc))
+        except OSError as exc:
+            return _fail(f"cannot lock {config.log_dir}: {exc}")
 
     patterns = [str(item) for item in getattr(args, "only", [])]
     refs = _select_refs(config, patterns)

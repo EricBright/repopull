@@ -117,7 +117,9 @@ This is the conservative choice for a backup disk.
 **Decision:** `flock` on `logs/.lock`; a second run exits 2 with a clear message.
 
 **Consequences:** No interleaved fetches or half-written reports. The lock is
-released automatically when the process exits.
+released automatically when the process exits. Root-state writes are atomic and
+last-writer-wins; they do not participate in this lock except `repair-root`,
+which takes it as a mutating command.
 
 ## 11. Counts-only brief
 
@@ -380,24 +382,30 @@ is not a stable disk identity: btrfs and other filesystems can use an anonymous
 `0:N` device, and the number can change across reboots while the same disk stays
 mounted at the same path.
 
-**Decision:** The GUI scans in a `QRunnable` and reports back through Qt signals;
-the empty view says "Scanning the watched folder…" until it finishes. On the
-first healthy discovery, `logs/root-state.json` records the path, filesystem
-UUID, mount source, device number, and repository count. The UUID is the
+**Decision:** The GUI scans in a `QRunnable` and checks the saved root state in
+that worker, then reports back through Qt signals; the empty view says
+"Scanning the watched folder…" until it finishes. On the first healthy
+discovery, `logs/root-state.json` records the path, filesystem UUID, mount source, device number, and repository count. The UUID is the
 identity; the device number is only a fallback when no UUID is available. A
-later different UUID, or an empty root that was non-empty, is refused. Legacy
-state files without a UUID use the device fallback once, then are rewritten
-with the UUID after a successful check. The GUI offers **Repair saved root
-state** for a mismatch, and the CLI offers `repopull repair-root` (preview) and
-`repopull repair-root --yes` (accept).
+later different UUID, or an empty root that was non-empty, is refused. Repair is
+offered only when the current root still contains a repository, so an empty disk
+cannot replace a positive saved count and disable the empty-root guard.
+Malformed, unreadable, and newer-version state files are refused rather than
+overwritten. Legacy state files without a UUID use the device fallback once,
+then are rewritten with the UUID after a successful check. The GUI offers
+**Repair saved root state** for a mismatch, and the CLI offers
+`repopull repair-root` (preview) and `repopull repair-root --yes` (accept).
 
 **Consequences:** A reboot no longer looks like a disk replacement just because
 an anonymous device number changed. A real replacement is still refused when
-the UUID differs. A legacy state file can require one repair after its first
-device change; the repair dialog shows both identities so the user can confirm
-the disk. The state file lives with the logs, so it cannot detect a change if
-the log directory is on the same missing disk. Smoke tests and screenshots keep
-synchronous discovery so their output stays deterministic.
+the UUID differs. The state is written from the identity that was checked, so a
+remount between check and write cannot silently bless a different disk; a
+transient UUID lookup failure preserves the previous UUID instead of falling
+back to device-only comparison. A legacy state file can require one repair after
+its first device change; the repair dialog shows both identities so the user can
+confirm the disk. The state file lives with the logs, so it cannot detect a
+change if the log directory is on the same missing disk. Smoke tests and
+screenshots keep synchronous discovery so their output stays deterministic.
 
 ## 29. Remember the last GUI page and filter
 

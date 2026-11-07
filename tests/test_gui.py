@@ -31,7 +31,8 @@ if HAVE_PYSIDE:
     from repopull.gui.rows import row_view, unchecked_view
     from repopull.gui.settings import SETTINGS_SECTIONS
     from repopull.gui.switch import Switch
-    from repopull.gui.window import MainWindow
+    from repopull.gui.window import DiscoveryTask, MainWindow
+    from repopull.rootstate import RootStateCheck
     from repopull.models import Outcome, Report, Row
     from repopull.refresh import SuspendDetector
     from repopull.report import write_log
@@ -74,6 +75,32 @@ if HAVE_PYSIDE:
 
                 self.assertEqual(window.visible_row_count(), 0)
                 self.assertIn("No watched folder", window.empty_label.text())
+                window.close()
+
+        def test_empty_root_mismatch_shows_removal_guidance(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = base / "repos"
+                root.mkdir()
+                logs = base / "logs"
+                logs.mkdir()
+                (logs / "root-state.json").write_text(
+                    json.dumps(
+                        {
+                            "version": 2,
+                            "root": str(root),
+                            "device": root.stat().st_dev,
+                            "repo_count": 3,
+                            "filesystem_uuid": "stable-uuid",
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                window = MainWindow(self._config(base, root))
+
+                self.assertIn("empty", window.empty_label.text())
+                self.assertIn("Remove", window.empty_label.text())
+                self.assertTrue(window.repair_button.isHidden())
                 window.close()
 
         def test_root_state_mismatch_offers_and_performs_repair(self) -> None:
@@ -924,6 +951,30 @@ if HAVE_PYSIDE:
 
                 self.assertEqual(window.visible_row_count(), 3)
                 window.request_quit()
+
+        def test_discovery_task_checks_the_root_state(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = self._tree(base)
+                task = DiscoveryTask(
+                    root,
+                    2,
+                    (),
+                    log_dir=base / "logs",
+                )
+                seen: list[tuple[list[object], object]] = []
+                task.signals.checked.connect(
+                    lambda refs, check: seen.append((refs, check))
+                )
+
+                task.run()
+
+                self.assertEqual(len(seen), 1)
+                refs, check = seen[0]
+                self.assertEqual(len(refs), 3)
+                self.assertIsInstance(check, RootStateCheck)
+                self.assertIsNone(check.problem)  # type: ignore[union-attr]
+                self.assertEqual(check.repo_count, 3)  # type: ignore[union-attr]
 
         def test_network_failure_schedules_short_retry(self) -> None:
             with tempfile.TemporaryDirectory() as tmp:

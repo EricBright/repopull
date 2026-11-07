@@ -8,31 +8,28 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from repopull.mounts import RootIdentity
 from repopull.rootstate import (
     ROOT_STATE_FILE,
     ROOT_STATE_VERSION,
-    RootIdentity,
     RootState,
-    _filesystem_uuid,
-    _mount_source,
     check_root_state,
-    load_root_state,
+    read_root_state,
     root_state_problem,
     save_root_state,
-    verify_root_state,
 )
 
 
 class RootStateTests(unittest.TestCase):
-    def test_round_trip_and_first_verification(self) -> None:
+    def test_round_trip_and_first_check(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             root = base / "repos"
             root.mkdir()
             logs = base / "logs"
 
-            self.assertIsNone(verify_root_state(logs, root, 3))
-            state = load_root_state(logs)
+            self.assertIsNone(check_root_state(logs, root, 3).problem)
+            state = read_root_state(logs).state
 
             self.assertIsNotNone(state)
             assert state is not None
@@ -45,7 +42,10 @@ class RootStateTests(unittest.TestCase):
         previous = RootState(root="/repos", device=1, repo_count=3)
 
         problem = root_state_problem(
-            previous, root=Path("/repos"), device=2, repo_count=3
+            previous,
+            root=Path("/repos"),
+            current=RootIdentity(2, None, None),
+            repo_count=3,
         )
 
         self.assertIsNotNone(problem)
@@ -55,7 +55,10 @@ class RootStateTests(unittest.TestCase):
         previous = RootState(root="/repos", device=1, repo_count=3)
 
         problem = root_state_problem(
-            previous, root=Path("/repos"), device=1, repo_count=0
+            previous,
+            root=Path("/repos"),
+            current=RootIdentity(1, None, None),
+            repo_count=0,
         )
 
         self.assertIsNotNone(problem)
@@ -66,7 +69,10 @@ class RootStateTests(unittest.TestCase):
 
         self.assertIsNone(
             root_state_problem(
-                previous, root=Path("/new"), device=2, repo_count=4
+                previous,
+                root=Path("/new"),
+                current=RootIdentity(2, None, None),
+                repo_count=4,
             )
         )
 
@@ -75,7 +81,7 @@ class RootStateTests(unittest.TestCase):
             logs = Path(tmp)
             (logs / ROOT_STATE_FILE).write_text("{not json", encoding="utf-8")
 
-            self.assertIsNone(load_root_state(logs))
+            self.assertIsNone(read_root_state(logs).state)
 
     def test_save_and_load(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -86,7 +92,7 @@ class RootStateTests(unittest.TestCase):
 
             save_root_state(logs, root, 7)
 
-            state = load_root_state(logs)
+            state = read_root_state(logs).state
             self.assertIsNotNone(state)
             assert state is not None
             self.assertEqual(state.repo_count, 7)
@@ -120,9 +126,12 @@ class RootStateTests(unittest.TestCase):
         problem = root_state_problem(
             previous,
             root=Path("/repos"),
-            device=114,
+            current=RootIdentity(
+                114,
+                "f19840d3-0c86-43c3-9170-6f3ebb94c971",
+                None,
+            ),
             repo_count=43,
-            filesystem_uuid="f19840d3-0c86-43c3-9170-6f3ebb94c971",
         )
 
         self.assertIsNone(problem)
@@ -140,9 +149,8 @@ class RootStateTests(unittest.TestCase):
         problem = root_state_problem(
             previous,
             root=Path("/repos"),
-            device=114,
+            current=RootIdentity(114, "new-uuid", None),
             repo_count=43,
-            filesystem_uuid="new-uuid",
         )
 
         self.assertIsNotNone(problem)
@@ -171,7 +179,7 @@ class RootStateTests(unittest.TestCase):
             self.assertIsNotNone(check.problem)
             self.assertTrue(check.repairable)
             self.assertIsNotNone(check.current)
-            self.assertEqual(load_root_state(logs).device, root.stat().st_dev + 1)  # type: ignore[union-attr]
+            self.assertEqual(read_root_state(logs).state.device, root.stat().st_dev + 1)  # type: ignore[union-attr]
 
     def test_check_rewrites_legacy_state_after_a_matching_device(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -228,54 +236,196 @@ class RootStateTests(unittest.TestCase):
                 check = check_root_state(logs, root, 3)
 
             self.assertIsNone(check.problem)
-            state = load_root_state(logs)
+            state = read_root_state(logs).state
             self.assertEqual(state.device, 114)  # type: ignore[union-attr]
             self.assertEqual(state.filesystem_uuid, "same-uuid")  # type: ignore[union-attr]
 
-    def test_mount_source_uses_longest_matching_mount_point(self) -> None:
+    def test_check_and_save_use_the_same_identity(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             root = base / "repos"
             root.mkdir()
-            mountinfo = base / "mountinfo"
-            mountinfo.write_text(
-                "\n".join(
-                    [
-                        "1 2 0:1 / / rw shared:1 - overlay overlay rw",
-                        f"2 1 0:133 / {root} rw shared:2 - btrfs /dev/sdb1 rw",
-                    ]
+            logs = base / "logs"
+            logs.mkdir()
+            device = root.stat().st_dev
+            (logs / ROOT_STATE_FILE).write_text(
+                json.dumps(
+                    {
+                        "version": 2,
+                        "root": str(root),
+                        "device": device,
+                        "repo_count": 3,
+                        "filesystem_uuid": "uuid-A",
+                        "mount_source": "/dev/sdb1",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            checked = RootIdentity(device, "uuid-A", "/dev/sdb1")
+            later = RootIdentity(device, "uuid-B", "/dev/sdb2")
+
+            with patch(
+                "repopull.rootstate.root_identity",
+                side_effect=[checked, later],
+            ) as probe:
+                check = check_root_state(logs, root, 3)
+
+            self.assertIsNone(check.problem)
+            self.assertEqual(probe.call_count, 1)
+            state = read_root_state(logs).state
+            self.assertEqual(state.filesystem_uuid, "uuid-A")  # type: ignore[union-attr]
+
+    def test_missing_uuid_keeps_the_previous_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            root = base / "repos"
+            root.mkdir()
+            logs = base / "logs"
+            logs.mkdir()
+            device = root.stat().st_dev
+            (logs / ROOT_STATE_FILE).write_text(
+                json.dumps(
+                    {
+                        "version": 2,
+                        "root": str(root),
+                        "device": device,
+                        "repo_count": 3,
+                        "filesystem_uuid": "stable-uuid",
+                        "mount_source": "/dev/sdb1",
+                    }
                 ),
                 encoding="utf-8",
             )
 
-            self.assertEqual(
-                _mount_source(root, mountinfo=mountinfo), "/dev/sdb1"
-            )
+            with patch(
+                "repopull.rootstate.root_identity",
+                return_value=RootIdentity(device, None, None),
+            ):
+                check = check_root_state(logs, root, 3)
 
-    def test_filesystem_uuid_resolves_a_by_uuid_symlink(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            by_uuid = Path(tmp)
-            (by_uuid / "f19840d3-0c86-43c3-9170-6f3ebb94c971").symlink_to(
-                "/dev/sdb1"
-            )
+            self.assertIsNone(check.problem)
+            state = read_root_state(logs).state
+            self.assertEqual(state.filesystem_uuid, "stable-uuid")  # type: ignore[union-attr]
+            self.assertEqual(state.mount_source, "/dev/sdb1")  # type: ignore[union-attr]
 
-            self.assertEqual(
-                _filesystem_uuid("/dev/sdb1", by_uuid=by_uuid),
-                "f19840d3-0c86-43c3-9170-6f3ebb94c971",
-            )
-
-    def test_mountinfo_octal_escapes_are_decoded(self) -> None:
+    def test_empty_identity_mismatch_is_not_repairable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
-            root = base / "with space"
+            root = base / "repos"
             root.mkdir()
-            escaped = str(root).replace(" ", "\\040")
-            mountinfo = base / "mountinfo"
-            mountinfo.write_text(
-                f"1 2 0:1 / {escaped} rw - btrfs /dev/sdb1 rw",
+            logs = base / "logs"
+            logs.mkdir()
+            device = root.stat().st_dev
+            (logs / ROOT_STATE_FILE).write_text(
+                json.dumps(
+                    {
+                        "version": 2,
+                        "root": str(root),
+                        "device": device + 1,
+                        "repo_count": 3,
+                        "filesystem_uuid": "uuid-A",
+                    }
+                ),
                 encoding="utf-8",
             )
 
-            self.assertEqual(
-                _mount_source(root, mountinfo=mountinfo), "/dev/sdb1"
+            with patch(
+                "repopull.rootstate.root_identity",
+                return_value=RootIdentity(device, "uuid-B", "/dev/sdb2"),
+            ):
+                check = check_root_state(logs, root, 0)
+
+            self.assertIsNotNone(check.problem)
+            self.assertIn("no repositories", check.problem or "")
+            self.assertFalse(check.repairable)
+            state = read_root_state(logs).state
+            self.assertEqual(state.repo_count, 3)  # type: ignore[union-attr]
+
+    def test_infinite_state_value_is_refused_without_overwriting(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            root = base / "repos"
+            root.mkdir()
+            logs = base / "logs"
+            logs.mkdir()
+            path = logs / ROOT_STATE_FILE
+            original = (
+                f'{{"root": "{root}", "device": Infinity, "repo_count": 3}}'
             )
+            path.write_text(original, encoding="utf-8")
+
+            check = check_root_state(logs, root, 3)
+
+            self.assertIsNotNone(check.problem)
+            self.assertIn("device must be an integer", check.problem or "")
+            self.assertFalse(check.repairable)
+            self.assertEqual(path.read_text(encoding="utf-8"), original)
+            self.assertIsNone(read_root_state(logs).state)
+
+    def test_unknown_state_version_is_refused_without_overwriting(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            root = base / "repos"
+            root.mkdir()
+            logs = base / "logs"
+            logs.mkdir()
+            path = logs / ROOT_STATE_FILE
+            original = json.dumps(
+                {
+                    "version": 99,
+                    "root": str(root),
+                    "device": root.stat().st_dev,
+                    "repo_count": 3,
+                }
+            )
+            path.write_text(original, encoding="utf-8")
+
+            check = check_root_state(logs, root, 3)
+
+            self.assertIsNotNone(check.problem)
+            self.assertIn("unsupported version", check.problem or "")
+            self.assertEqual(path.read_text(encoding="utf-8"), original)
+
+    def test_malformed_json_is_refused_without_overwriting(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            root = base / "repos"
+            root.mkdir()
+            logs = base / "logs"
+            logs.mkdir()
+            path = logs / ROOT_STATE_FILE
+            path.write_text("{not json", encoding="utf-8")
+
+            check = check_root_state(logs, root, 3)
+
+            self.assertIsNotNone(check.problem)
+            self.assertIn("malformed JSON", check.problem or "")
+            self.assertEqual(path.read_text(encoding="utf-8"), "{not json")
+
+    def test_non_utf8_state_is_refused_without_overwriting(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            root = base / "repos"
+            root.mkdir()
+            logs = base / "logs"
+            logs.mkdir()
+            path = logs / ROOT_STATE_FILE
+            path.write_bytes(b"\xff\xfe")
+
+            check = check_root_state(logs, root, 3)
+
+            self.assertIsNotNone(check.problem)
+            self.assertIn("not UTF-8", check.problem or "")
+            self.assertEqual(path.read_bytes(), b"\xff\xfe")
+
+    def test_atomic_save_leaves_no_temporary_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            root = base / "repos"
+            root.mkdir()
+            logs = base / "logs"
+
+            save_root_state(logs, root, 2)
+
+            names = sorted(path.name for path in logs.iterdir())
+            self.assertEqual(names, [ROOT_STATE_FILE])

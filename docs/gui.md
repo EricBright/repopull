@@ -21,8 +21,8 @@ it lets `uv` provide PySide6 for that run. You can also run
 It runs natively on Wayland and X11; the platform choice is left to Qt.
 
 On first run there is **no watched folder**. Open **Settings** and choose one;
-the library then fills. Nothing is hard-coded into the app. The initial scan
-runs in a background worker, so a slow or missing mount does not freeze the
+the library then fills. Nothing is hard-coded into the app. The initial scan and its root-state identity check
+run in a background worker, so a slow or missing mount does not freeze the
 window; the empty view says it is scanning until the result arrives.
 
 If the watched folder now resolves to a different filesystem, the library

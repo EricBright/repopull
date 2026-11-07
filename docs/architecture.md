@@ -14,7 +14,8 @@ between discovery, git access, decision-making, and presentation.
 | `sync.py` | Inspection, fetching, classification, and applying updates. |
 | `refresh.py` | Pure automatic-refresh policy: interval clamping, delays, backoff, suspend detection, and the GUI decision table. |
 | `report.py` | Table rendering, log persistence, JSON serialization. |
-| `rootstate.py` | Remembers the watched root device and repository count. |
+| `mounts.py` | Probes the watched path's mount source, filesystem UUID, and device identity. |
+| `rootstate.py` | Persists and compares the watched root's filesystem identity and repository count. |
 | `uistate.py` | Remembers the last GUI page, filter, and detail selection. |
 | `diagnostics.py` | Human-readable path/root explanations and fix-it advice. |
 | `menu.py` | Interactive loop and selection parsing. |
@@ -132,8 +133,8 @@ writing a separate JSON file.
   path/root advice, CLI exit paths, offscreen GUI.
 - `tests/test_refresh.py` — interval clamps, delay/backoff, suspend detection,
   and the pure automatic-refresh decision table.
-- `tests/test_rootstate.py`, `tests/test_uistate.py` — root identity and
-  remembered GUI state.
+- `tests/test_mounts.py`, `tests/test_rootstate.py`, `tests/test_uistate.py` —
+  mount probing, root identity, and remembered GUI state.
 - `tests/test_selection.py`, `tests/test_version.py` — menu parser and version
   consistency.
 - `tests/test_icons.py`, `tests/test_docs.py` — icon assets/window icon; README

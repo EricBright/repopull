@@ -92,6 +92,7 @@ from repopull.refresh import (
 )
 from repopull.report import check_log_dir, load_latest_report
 from repopull.rootstate import (
+    ROOT_STATE_FILE,
     RootStateCheck,
     check_root_state,
     describe_identity,
@@ -125,6 +126,7 @@ class DiscoverySignals(QObject):
     """Signals from a background repository scan."""
 
     finished = Signal(list)
+    checked = Signal(list, object)
     failed = Signal(str)
 
 
@@ -132,12 +134,18 @@ class DiscoveryTask(QRunnable):
     """Scan the watched root without blocking the window."""
 
     def __init__(
-        self, root: Path, max_depth: int, ignore: tuple[str, ...]
+        self,
+        root: Path,
+        max_depth: int,
+        ignore: tuple[str, ...],
+        *,
+        log_dir: Path | None = None,
     ) -> None:
         super().__init__()
         self.root = root
         self.max_depth = max_depth
         self.ignore = ignore
+        self.log_dir = log_dir
         self.signals = DiscoverySignals()
 
     def run(self) -> None:
@@ -147,10 +155,14 @@ class DiscoveryTask(QRunnable):
                 max_depth=self.max_depth,
                 ignore=self.ignore,
             )
+            if self.log_dir is None:
+                self.signals.finished.emit(refs)
+                return
+            check = check_root_state(self.log_dir, self.root, len(refs))
         except Exception as exc:  # noqa: BLE001 - report to the UI
             self.signals.failed.emit(str(exc))
             return
-        self.signals.finished.emit(refs)
+        self.signals.checked.emit(refs, check)
 
 
 class MainWindow(QMainWindow):
@@ -429,7 +441,7 @@ class MainWindow(QMainWindow):
         self.repair_button.setObjectName("Primary")
         self.repair_button.setToolTip(
             "Review the saved and current disk identities, then accept the "
-            "current one if this is the disk you expect"
+            "current one if this is the disk you expect."
         )
         self.repair_button.clicked.connect(self._repair_root_state)
         self.repair_button.hide()
@@ -1119,10 +1131,15 @@ class MainWindow(QMainWindow):
         self.discovery_error = "Scanning the watched folder…"
         self._render_library()
         task = DiscoveryTask(
-            root, self.config.max_depth, self.config.ignore
+            root,
+            self.config.max_depth,
+            self.config.ignore,
+            log_dir=self.config.log_dir,
         )
-        task.signals.finished.connect(
-            lambda refs: self._on_discovery_finished(generation, refs)
+        task.signals.checked.connect(
+            lambda refs, check: self._on_discovery_checked(
+                generation, refs, check
+            )
         )
         task.signals.failed.connect(
             lambda message: self._on_discovery_failed(generation, message)
@@ -1130,32 +1147,28 @@ class MainWindow(QMainWindow):
         self._discovery_task = task
         QThreadPool.globalInstance().start(task)
 
-    def _on_discovery_finished(
-        self, generation: int, refs: list[RepoRef]
+    def _on_discovery_checked(
+        self,
+        generation: int,
+        refs: list[RepoRef],
+        check: object,
     ) -> None:
         if generation != self._discovery_generation or self._quit_requested:
             return
         self._discovery_task = None
         found = [ref for ref in refs if isinstance(ref, RepoRef)]
         self.refs = found
-        check = (
-            check_root_state(
-                self.config.log_dir, self.config.root, len(found)
-            )
-            if self.config.root is not None
-            else None
-        )
-        self.root_state_check = check
-        problem = check.problem if check is not None else None
-        if problem is not None:
+        if not isinstance(check, RootStateCheck):
             self.refs = []
-            self.discovery_error = problem
-            if check is not None and check.repairable:
-                self.discovery_error += (
-                    " Use Repair saved root state to accept this disk."
-                )
+            self.root_state_check = None
+            self.discovery_error = "root-state check returned no result"
         else:
-            self.discovery_error = None
+            self.root_state_check = check
+            if check.problem is not None:
+                self.refs = []
+                self.discovery_error = self._root_state_message(check)
+            else:
+                self.discovery_error = None
         self._render_library()
         self._update_status_block()
         self._schedule_auto_refresh()
@@ -1177,6 +1190,23 @@ class MainWindow(QMainWindow):
         self._update_status_block()
         self._schedule_auto_refresh()
         self._flash(message)
+
+    def _root_state_message(self, check: RootStateCheck) -> str:
+        """Turn a failed root check into the action the library can offer."""
+        message = check.problem or "saved root state does not match"
+        separator = " " if message.endswith((".", "?", "!")) else ". "
+        if check.repairable:
+            return (
+                message
+                + separator
+                + "Use Repair saved root state to accept this disk."
+            )
+        return (
+            message
+            + separator
+            + f"Remove {self.config.log_dir / ROOT_STATE_FILE} "
+            "if this is intentional."
+        )
 
     def _reload_refs(self) -> None:
         root = self.config.root
@@ -1204,11 +1234,7 @@ class MainWindow(QMainWindow):
         self.root_state_check = check
         if check.problem is not None:
             self.refs = []
-            self.discovery_error = check.problem
-            if check.repairable:
-                self.discovery_error += (
-                    " Use Repair saved root state to accept this disk."
-                )
+            self.discovery_error = self._root_state_message(check)
             return
         self.discovery_error = None
 
@@ -1238,7 +1264,11 @@ class MainWindow(QMainWindow):
             return
         try:
             save_root_state(
-                self.config.log_dir, root, check.repo_count
+                self.config.log_dir,
+                root,
+                check.repo_count,
+                identity=check.current,
+                previous=check.previous,
             )
         except OSError as exc:
             QMessageBox.warning(

@@ -13,6 +13,7 @@ from pathlib import Path
 from repopull.cli import main
 from repopull.models import Outcome, Report, Row
 from repopull.report import write_log
+from repopull.runtime import run_lock
 
 
 class SyncBehindTests(unittest.TestCase):
@@ -128,3 +129,36 @@ class RepairRootTests(unittest.TestCase):
             self.assertEqual(
                 saved["device"], (base / "repos").stat().st_dev
             )
+
+    def test_repair_root_obeys_the_run_lock(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            config_path = self._config(base)
+            errors = io.StringIO()
+
+            with run_lock(base / "logs"):
+                with contextlib.redirect_stderr(errors):
+                    code = main(
+                        ["--config", str(config_path), "repair-root"]
+                    )
+
+            self.assertEqual(code, 2)
+            self.assertIn("another repopull run", errors.getvalue())
+
+    def test_repair_root_reports_an_unusable_state_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            config_path = self._config(base)
+            path = base / "logs" / "root-state.json"
+            path.write_text("{not json", encoding="utf-8")
+            errors = io.StringIO()
+
+            with (
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(errors),
+            ):
+                code = main(["--config", str(config_path), "repair-root"])
+
+            self.assertEqual(code, 0)
+            self.assertIn("not usable", errors.getvalue())
+            self.assertEqual(path.read_text(encoding="utf-8"), "{not json")
