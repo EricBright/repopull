@@ -157,6 +157,7 @@ audit records the totals.
 | `lfs_help.py` | Read-only Git LFS install/enable dialog |
 | `jobs.py` | `RunTask(QRunnable)` holding the same lock; Qt signals |
 | `settings.py` | Settings cards, title/hint rows, and section widgets |
+| `switch.py` | Animated immediate-effect switch painted on `QCheckBox` |
 | `theme.py` | Palette tokens and generated stylesheet |
 | `assets/` | B1t icon family (display and small optical cuts) and the sidebar mark; see [branding.md](branding.md) |
 

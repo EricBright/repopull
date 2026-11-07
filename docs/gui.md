@@ -60,20 +60,22 @@ window size.
 | Section | Controls |
 |---|---|
 | **Watching** | Watched folder with Browse and Check, search depth, ignore globs |
-| **Refresh** | Close to tray, automatic status refresh, pause while hidden, interval |
+| **Refresh** | Tray switch, automatic status refresh switch, pause-while-hidden switch, interval |
 | **Network** | Delay between fetches, fetch timeout, other git timeout |
 | **Updates** | Submodules, LFS skip policy, LFS status and Help |
 | **Storage** | Config file, logs directory, log retention |
 
-The header shows **Unsaved changes** or **All changes saved**. **Save settings**
-is disabled when there is nothing to write; **Reset to defaults** restores the
-shipped values first. Refresh changes apply immediately, with or without Save.
-Saving any other change rewrites `config.toml` and drops hand-written comments.
+The footer button reads **Saved** when there is nothing to write and
+**Save unsaved settings** when deferred edits exist. It turns amber for unsaved
+changes and red after a failed save; **Reset to defaults** restores the shipped
+values in the form first. Refresh uses switches, and the interval field says
+**Applies and saves immediately**. Saving any other change rewrites
+`config.toml` and drops hand-written comments.
 
 The logs path is resolved at runtime from `$XDG_CONFIG_HOME` (or `~/.config`).
 **Keep run logs** sets `log_retention_days`; `0` keeps every run log.
 **Keep running in the system tray** is close-to-tray; the tray icon is visible
-whenever the app runs, and the checkbox controls whether closing hides to it.
+whenever the app runs, and its switch controls whether closing hides to it.
 Normal minimize stays in the taskbar. **Check folder** also scans in the
 background.
 
@@ -133,8 +135,9 @@ The GUI holds the same `logs/.lock` as the CLI, so two runs cannot overlap.
 - Saving general settings rewrites `config.toml` and drops hand-written
   comments; background and refresh changes use a targeted writer that preserves
   them.
-- Settings are not autosaved. Quitting with unsaved changes discards them; the
-  header shows **Unsaved changes** while any are pending.
+- General settings are not autosaved. Quitting with unsaved changes discards
+  them; the footer button reads **Save unsaved settings** while any are pending.
+  Refresh switches and the interval save immediately.
 - The window is dark-only.
 - Keyboard navigation is basic.
 

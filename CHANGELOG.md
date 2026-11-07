@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.12 — 2026-11-07
+
+- Replaced the three immediate Refresh checkboxes with animated switches. Off
+  is a muted track with a left thumb; on is an accent-blue track with a right
+  thumb. The off state does not fade the label.
+- Redesigned the deferred-save control: **Saved** when clean, amber **Save
+  unsaved settings** when dirty, and red **Couldn't save — Retry** after a
+  failure. The duplicate header status is gone.
+- The interval field keeps a single **Applies and saves immediately.**
+  hint; the shared Refresh note is removed. Other sections have no save hint.
+
 ## 0.4.11 — 2026-11-07
 
 - Automatic refresh now waits only the time remaining since the last completed

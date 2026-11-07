@@ -21,13 +21,15 @@ else:
     HAVE_PYSIDE = True
 
 if HAVE_PYSIDE:
-    from PySide6.QtCore import QThreadPool
+    from PySide6.QtCore import Qt, QThreadPool
+    from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication
 
     from repopull.config import Config, load_config, save_config
     from repopull.diagnostics import LfsStatus
     from repopull.gui.rows import row_view, unchecked_view
     from repopull.gui.settings import SETTINGS_SECTIONS
+    from repopull.gui.switch import Switch
     from repopull.gui.window import MainWindow
     from repopull.models import Outcome, Report, Row
     from repopull.refresh import SuspendDetector
@@ -126,8 +128,9 @@ if HAVE_PYSIDE:
                 self.assertEqual(window.settings_stack.currentIndex(), 0)
                 self.assertTrue(window.settings_nav_buttons[0].isChecked())
                 self.assertFalse(window.save_button.isEnabled())
+                self.assertEqual(window.save_button.text(), "Saved")
                 self.assertEqual(
-                    window.settings_status.text(), "All changes saved"
+                    window.save_button.property("saveState"), "clean"
                 )
                 window.close()
 
@@ -246,8 +249,13 @@ if HAVE_PYSIDE:
 
                 window._show_settings()
                 window.settings_max_depth.setValue(3)
-                self.assertIn("Unsaved", window.settings_status.text())
+                self.assertEqual(
+                    window.save_button.text(), "Save unsaved settings"
+                )
                 self.assertTrue(window.save_button.isEnabled())
+                self.assertEqual(
+                    window.save_button.property("saveState"), "dirty"
+                )
 
                 window._select_settings_section(2)
                 window._select_settings_section(0)
@@ -256,9 +264,7 @@ if HAVE_PYSIDE:
                 self.assertEqual(window.settings_max_depth.value(), 3)
 
                 window._save_settings()
-                self.assertEqual(
-                    window.settings_status.text(), "All changes saved"
-                )
+                self.assertEqual(window.save_button.text(), "Saved")
                 self.assertFalse(window.save_button.isEnabled())
                 self.assertEqual(
                     load_config(config_path=config_path).max_depth, 3
@@ -283,13 +289,37 @@ if HAVE_PYSIDE:
                 base = Path(tmp)
                 window = MainWindow(self._config(base, self._tree(base)))
 
+                self.assertIsInstance(window.settings_background, Switch)
+                self.assertIsInstance(window.settings_auto, Switch)
+                self.assertIsInstance(window.settings_hidden_pause, Switch)
+                self.assertEqual(
+                    window.settings_interval_hint.text(),
+                    "Applies and saves immediately.",
+                )
                 window.settings_auto.setChecked(True)
 
-                self.assertEqual(
-                    window.settings_status.text(), "All changes saved"
-                )
+                self.assertEqual(window.save_button.text(), "Saved")
                 self.assertFalse(window.save_button.isEnabled())
                 window.close()
+
+        def test_switch_toggles_with_mouse_and_space(self) -> None:
+            switch = Switch()
+            switch.setAccessibleName("Test switch")
+            switch.show()
+            self.app.processEvents()
+
+            self.assertFalse(switch.isChecked())
+            QTest.mouseClick(
+                switch,
+                Qt.MouseButton.LeftButton,
+                pos=switch.rect().center(),
+            )
+            self.assertTrue(switch.isChecked())
+            QTest.keyClick(switch, Qt.Key.Key_Space)
+            self.assertFalse(switch.isChecked())
+            self.assertEqual(switch.accessibleName(), "Test switch")
+            self.assertEqual((switch.width(), switch.height()), (48, 28))
+            switch.close()
 
         def test_sidebar_brand_mark_is_loaded(self) -> None:
             with tempfile.TemporaryDirectory() as tmp:
@@ -695,7 +725,7 @@ if HAVE_PYSIDE:
                 start.assert_not_called()
                 window.request_quit()
 
-        def test_failed_immediate_save_keeps_settings_dirty(self) -> None:
+        def test_failed_immediate_save_shows_retry(self) -> None:
             with tempfile.TemporaryDirectory() as tmp:
                 base = Path(tmp)
                 config_path = base / "config.toml"
@@ -717,8 +747,21 @@ if HAVE_PYSIDE:
                 ):
                     window.settings_background.setChecked(True)
 
-                self.assertIn("Unsaved", window.settings_status.text())
+                self.assertEqual(
+                    window.save_button.text(), "Couldn't save — Retry"
+                )
                 self.assertTrue(window.save_button.isEnabled())
+                self.assertEqual(
+                    window.save_button.property("saveState"), "error"
+                )
+                self.assertFalse(window._settings_dirty)
+
+                with patch(
+                    "repopull.gui.window.save_behavior_settings"
+                ):
+                    window.settings_background.setChecked(False)
+                self.assertEqual(window.save_button.text(), "Saved")
+                self.assertFalse(window.save_button.isEnabled())
                 window.request_quit()
 
         def test_network_retry_bypasses_normal_cooldown(self) -> None:

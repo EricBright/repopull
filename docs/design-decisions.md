@@ -408,7 +408,7 @@ primary library behind a stale detail page. The state file is small and
 best-effort; a malformed or unwritable file is ignored. It is deliberately not
 in `config.toml`, so UI preferences do not become operator configuration.
 
-## 30. Settings uses a section rail and an explicit Save
+## 30. Settings uses a section rail and a hybrid save model
 
 **Context:** The Settings page had grown to five groups in one long form. At the
 default 720 px window, Network, Updates, and Storage were below the fold; the
@@ -418,22 +418,24 @@ uses a compact section rail, one concept per page, and title/hint rows.
 
 **Decision:** Give Settings a 140 px local section rail with five sections:
 Watching, Refresh, Network, Updates, and Storage. Each section is a card of
-title/hint/control rows, with a shared scroll for short windows. The header
-shows **Unsaved changes** or **All changes saved**; Save lives in a sticky
-footer and is disabled when clean. Draft edits survive section switches.
-Refresh keeps its targeted immediate writer; the other sections commit through
-Save. Do not add AppGlider-style autosave: its `QSettings` store has no
-user-edited comments to lose, while `save_config()` rewrites `config.toml` and
-drops them. Full autosave would first need a comment-preserving flat-TOML
-writer.
+title/hint/control rows, with a shared scroll for short windows. The footer
+button reads **Saved** when clean and **Save unsaved settings** when deferred
+edits exist; it turns amber for unsaved changes and red after a save failure.
+Draft edits survive section switches. Refresh keeps its targeted immediate
+writer, with switches for the three binary controls and an interval field that
+says **Applies and saves immediately**; the other sections commit through
+Save. Do not add
+AppGlider-style autosave: its `QSettings` store has no user-edited comments to
+lose, while `save_config()` rewrites `config.toml` and drops them. Full autosave
+would first need a comment-preserving flat-TOML writer.
 
 **Consequences:** At 1040×720 every section fits without scrolling; the shared
 scroll covers unusually small windows or large text. The mixed save model is now
-visible: Refresh says it applies immediately, and the other sections show a
-dirty marker. Quitting with unsaved changes still discards them; a prompt would
-be a separate change. The section rail adds a second 140 px column, leaving
-enough width for path fields at the minimum window size. See
-[gui.md](gui.md#settings).
+visible in the controls themselves: switches and the interval save immediately,
+while the footer button owns the deferred sections. Quitting with unsaved
+changes still discards them; a prompt would be a separate change. The section
+rail adds a second 140 px column, leaving enough width for path fields at the
+minimum window size. See [gui.md](gui.md#settings).
 
 ## 31. LFS status is rechecked on demand, not watched
 

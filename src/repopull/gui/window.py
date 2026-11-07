@@ -75,6 +75,7 @@ from repopull.gui.settings import (
     SettingRow,
     SettingsCard,
 )
+from repopull.gui.switch import Switch
 from repopull.models import Outcome, RepoRef, Report, Row
 from repopull.refresh import (
     AUTO_REFRESH_JITTER_S,
@@ -510,10 +511,6 @@ class MainWindow(QMainWindow):
         title.setObjectName("PageTitle")
         header.addWidget(title)
         header.addStretch(1)
-        self.settings_status = QLabel("All changes saved")
-        self.settings_status.setObjectName("SettingsStatus")
-        self.settings_status.setAccessibleName("Settings save status")
-        header.addWidget(self.settings_status)
         layout.addLayout(header)
 
         body = QHBoxLayout()
@@ -575,16 +572,16 @@ class MainWindow(QMainWindow):
         self.reset_button = QPushButton("Reset to defaults")
         self.reset_button.setObjectName("Ghost")
         self.reset_button.setToolTip(
-            "Restore the shipped defaults in the form; Save writes them."
+            "Restore the shipped defaults in the form, then save them with the "
+            "footer button."
         )
         self.reset_button.clicked.connect(self._reset_settings)
         actions.addWidget(self.reset_button)
         actions.addStretch(1)
-        self.save_button = QPushButton("Save settings")
-        self.save_button.setObjectName("Primary")
-        self.save_button.setToolTip(
-            "Write these settings to config.toml. Hand-written comments are removed."
-        )
+        self.save_button = QPushButton("Saved")
+        self.save_button.setObjectName("SaveButton")
+        self.save_button.setProperty("saveState", "clean")
+        self.save_button.setToolTip("No unsaved settings.")
         self.save_button.clicked.connect(self._save_settings)
         actions.addWidget(self.save_button)
         layout.addLayout(actions)
@@ -674,7 +671,7 @@ class MainWindow(QMainWindow):
     def _build_settings_refresh(self, column: QVBoxLayout) -> None:
         card = SettingsCard("Refresh")
 
-        self.settings_background = QCheckBox()
+        self.settings_background = Switch()
         self.settings_background.setAccessibleName(
             "Keep running in the system tray"
         )
@@ -686,14 +683,14 @@ class MainWindow(QMainWindow):
         card.add(
             SettingRow(
                 "Keep running in the system tray",
-                "When checked, closing hides the window instead of quitting.",
+                "When on, closing hides the window instead of quitting.",
                 self.settings_background,
             )
         )
 
         self.settings_tray_status = QLabel(
             "System tray is available. The tray icon is visible while repopull "
-            "runs; closing keeps it there only when this box is checked."
+            "runs; closing keeps it there only when this switch is on."
             if self._tray_available
             else "System tray is not available in this session; background mode "
             "is disabled and closing quits."
@@ -702,7 +699,7 @@ class MainWindow(QMainWindow):
         self.settings_tray_status.setWordWrap(True)
         card.add_note(self.settings_tray_status)
 
-        self.settings_auto = QCheckBox()
+        self.settings_auto = Switch()
         self.settings_auto.setAccessibleName("Refresh status automatically")
         card.add(
             SettingRow(
@@ -712,7 +709,7 @@ class MainWindow(QMainWindow):
             )
         )
 
-        self.settings_hidden_pause = QCheckBox()
+        self.settings_hidden_pause = Switch()
         self.settings_hidden_pause.setAccessibleName(
             "Pause automatic refresh while hidden"
         )
@@ -745,6 +742,11 @@ class MainWindow(QMainWindow):
             )
         )
 
+        self.settings_interval_hint = QLabel("Applies and saves immediately.")
+        self.settings_interval_hint.setObjectName("SettingHint")
+        self.settings_interval_hint.setWordWrap(True)
+        card.add_note(self.settings_interval_hint)
+
         self.settings_auto_warning = QLabel(
             "Frequent fetches increase load on remote servers; "
             "15 minutes or longer is recommended."
@@ -753,14 +755,6 @@ class MainWindow(QMainWindow):
         self.settings_auto_warning.setWordWrap(True)
         self.settings_auto_warning.setVisible(False)
         card.add_note(self.settings_auto_warning)
-
-        immediate = QLabel(
-            "Background and refresh changes save and apply immediately, so "
-            "Save settings stays disabled for them."
-        )
-        immediate.setObjectName("SettingHint")
-        immediate.setWordWrap(True)
-        card.add_note(immediate)
 
         self.settings_auto_next = QLabel("")
         self.settings_auto_next.setObjectName("SettingHint")
@@ -955,7 +949,7 @@ class MainWindow(QMainWindow):
         )
 
         comments = QLabel(
-            "Saving rewrites config.toml and removes comments you added to it."
+            "Save unsaved settings rewrites config.toml and removes comments you added to it."
         )
         comments.setObjectName("SettingHint")
         comments.setWordWrap(True)
@@ -1447,17 +1441,36 @@ class MainWindow(QMainWindow):
             self._set_settings_dirty(True)
 
     def _set_settings_dirty(self, dirty: bool) -> None:
-        """Update the header status and the Save button for deferred fields."""
+        """Update the Save button for deferred fields."""
         self._settings_dirty = dirty
-        self.settings_status.setText(
-            "● Unsaved changes" if dirty else "All changes saved"
-        )
-        self.settings_status.setProperty("dirty", dirty)
-        style = self.settings_status.style()
-        style.unpolish(self.settings_status)
-        style.polish(self.settings_status)
-        self.settings_status.update()
         self.save_button.setEnabled(dirty)
+        self.save_button.setText(
+            "Save unsaved settings" if dirty else "Saved"
+        )
+        self._set_save_state("dirty" if dirty else "clean")
+
+    def _set_save_state(self, state: str) -> None:
+        self.save_button.setProperty("saveState", state)
+        style = self.save_button.style()
+        style.unpolish(self.save_button)
+        style.polish(self.save_button)
+        self.save_button.update()
+        if state == "error":
+            self.save_button.setToolTip(
+                "The last save failed. Try again."
+            )
+        elif state == "dirty":
+            self.save_button.setToolTip(
+                "Write these settings to config.toml. Hand-written comments "
+                "are removed."
+            )
+        else:
+            self.save_button.setToolTip("No unsaved settings.")
+
+    def _set_save_error(self) -> None:
+        self.save_button.setEnabled(True)
+        self.save_button.setText("Couldn't save — Retry")
+        self._set_save_state("error")
 
     def _on_background_toggled(self, _checked: bool) -> None:
         if self._loading_settings:
@@ -1513,8 +1526,10 @@ class MainWindow(QMainWindow):
                     auto_refresh_pause_when_hidden=pause_hidden,
                 )
             except OSError as exc:
-                self._set_settings_dirty(True)
-                self._flash(f"Could not save background settings: {exc}")
+                self._set_save_error()
+                self._flash(f"Could not save refresh settings: {exc}")
+            else:
+                self._set_settings_dirty(self._settings_dirty)
         self._apply_background_mode()
         self._schedule_auto_refresh()
 
@@ -1622,7 +1637,7 @@ class MainWindow(QMainWindow):
             save_config(updated, target)
             self.config = load_config(config_path=target)
         except (OSError, ConfigError) as exc:
-            self._set_settings_dirty(True)
+            self._set_save_error()
             QMessageBox.warning(
                 self, "repopull", f"Could not save settings: {exc}"
             )
@@ -1664,7 +1679,9 @@ class MainWindow(QMainWindow):
         self._update_auto_controls()
         self.check_result.setText("")
         self._set_settings_dirty(True)
-        self._flash("Defaults restored; press Save settings to write them.")
+        self._flash(
+            "Defaults restored; press Save unsaved settings to write them."
+        )
 
     def _check_root(self) -> None:
         text = self.settings_root.text().strip()

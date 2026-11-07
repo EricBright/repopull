@@ -126,6 +126,40 @@ def stylesheet(palette: Palette = PALETTE) -> str:
         background: {p.raised};
         color: {p.faint};
     }}
+    QPushButton#SaveButton {{
+        background: {p.surface};
+        color: {p.faint};
+        border: 1px solid {p.line};
+        font-weight: 600;
+        min-width: 190px;
+    }}
+    QPushButton#SaveButton[saveState="dirty"] {{
+        background: {p.warn};
+        color: {p.bg};
+        border: 1px solid {p.warn};
+    }}
+    QPushButton#SaveButton[saveState="dirty"]:hover {{
+        background: #f7c978;
+    }}
+    QPushButton#SaveButton[saveState="dirty"]:pressed {{
+        background: #d9a24f;
+    }}
+    QPushButton#SaveButton[saveState="error"] {{
+        background: transparent;
+        color: {p.danger};
+        border: 1px solid {p.danger};
+    }}
+    QPushButton#SaveButton[saveState="error"]:hover {{
+        background: {rgba(p.danger, 0.12)};
+    }}
+    QPushButton#SaveButton:focus {{
+        border: 1px solid {p.text};
+    }}
+    QPushButton#SaveButton:disabled {{
+        background: {p.surface};
+        color: {p.faint};
+        border: 1px solid {p.line};
+    }}
     QPushButton#Danger {{
         color: {p.danger};
         border: 1px solid {p.danger};
@@ -276,13 +310,6 @@ def stylesheet(palette: Palette = PALETTE) -> str:
         background: {p.raised};
         color: {p.text};
         font-weight: 600;
-    }}
-    QLabel#SettingsStatus {{
-        color: {p.muted};
-        font-size: 12px;
-    }}
-    QLabel#SettingsStatus[dirty="true"] {{
-        color: {p.warn};
     }}
     QScrollArea {{
         background: transparent;
