@@ -163,4 +163,88 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH=src:tests \
 ```
 
 `_temp/` is gitignored; the verdicts live here, the raw logs do not.
+## 2026-11-07 re-audit (0.4.13 development tree)
+
+**Suite:** 224 tests, all running; no skips. The conditional parent-death test
+ran because `setpriv` is present. No test lacked an assertion, no assertion was
+swallowed by `try/except`, and no assertion was hidden inside a loop over a
+possibly-empty collection.
+
+**Scope:** mutation testing covered nine engine modules: `refresh`, `config`,
+`sync`, `discovery`, `report`, `models`, `rootstate`, `runtime`, and `uistate`.
+GUI, CLI, diagnostics, menu, git wrappers, and icon/docs tests were read in
+phase 1 but not mutated. This is an engine audit, not a whole-project one.
+
+### Phase 2 — mutation
+
+The first complete run produced **306 killed, 168 survived, 13 hung** from 487
+mutants. The seven refresh properties below were then strengthened and the config
+suite was extended; targeted re-runs of those two modules produced the final
+per-module figures:
+
+| Module | Mutants | Killed | Survived | Hung |
+|---|---:|---:|---:|---:|
+| `refresh.py` | 115 | 99 | 16 | 0 |
+| `config.py` | 65 | 51 | 1 | 13 |
+| `sync.py` | 114 | 73 | 41 | 0 |
+| `report.py` | 92 | 42 | 50 | 0 |
+| `rootstate.py` | 39 | 20 | 19 | 0 |
+| `discovery.py` | 31 | 17 | 14 | 0 |
+| `models.py` | 15 | 12 | 3 | 0 |
+| `uistate.py` | 15 | 9 | 6 | 0 |
+| `runtime.py` | 1 | 1 | 0 | 0 |
+| **Adjusted total** | **487** | **324** | **150** | **13** |
+
+The adjusted total replaces the first run's config and refresh rows with the
+re-run results; the other modules were not re-run. Kill rate is a shape, not a
+grade: `report.py` is dominated by formatting strings, and many `sync.py`
+survivors are integration paths rather than pure branches. A survivor is a
+worklist item, not proof that a test is worthless.
+
+The 13 hung mutants are all in `config.py`'s type validators and the
+`log_dir`/`ignore` checks. A mutation there makes the suite time out rather than
+fail. They are recorded as `hung`, never as killed; no test-falsifiability claim
+rests on them.
+
+### Phase 3 — direct sabotage
+
+Ten properties were broken by hand. Seven were initially **not caught**:
+
+| Property | Defect | Test verdict before | After |
+|---|---|---|---|
+| In-flight retry is 60 s | `60.0` → `66.0` | missed: test asserted the imported constant | caught by a literal 60.0 assertion |
+| Suspend detection threshold is 5 s | `5.0` → `5.5` | missed: test derived its input from the constant | caught by literal 4.0/5.0/5.2 cases |
+| Warning starts above zero | `0 < seconds` → `1 < seconds` | missed: interval 1 was untested | caught by `should_warn(1)` |
+| Cooldown jitter is added | `remaining + jitter` → `remaining - jitter` | missed: cooldown test used no jitter | caught by a 410 s jitter case |
+| `SHOW` catches up only when due | `<= 0` → `<= 1` | missed: no sub-second remainder case | caught by a 0.5 s remainder case |
+| Suspend gap threshold is strict | `gap < threshold` → `gap <= threshold` | missed: exact boundary untested | caught by a gap exactly at 5.0 s |
+| Default decision delay is zero | `0.0` → `0.5` | missed: STOP did not assert delay | caught by asserting `delay_s == 0.0` |
+
+The other three cases — the network retry cap, `wait_remaining` addition, and
+the in-flight constant after the literal assertion — were caught before and
+after. Final result: **10 of 10 sabotaged properties caught**.
+
+The fixes added 16 tests: five in `tests/test_refresh.py` and eleven in
+`tests/test_config.py`. They cover literal scheduler constants, jitter,
+sub-second `SHOW` timing, the exact suspend boundary, config defaults, empty
+and missing config files, boolean-as-number rejection, depth 1, zero
+auto-refresh, relative log directories, `ignore` type validation, the
+`REPOPULL_CONFIG` environment path, project-home fallback, and compact
+`key=value` updates.
+
+### What remains
+
+- 150 mutation survivors remain. Most are equivalent mutants, untested
+  formatting constants, or behaviour in layers this run did not mutate. The
+  `report.py` and `sync.py` survivors are the largest groups and are an
+  explicit open worklist, not a pass.
+- 13 config mutants hung. They need individual inspection before treating the
+  validator coverage as complete.
+- The 43 "never killed a mutant" tests from the full run include many in
+  unmutated layers (GUI, CLI, diagnostics, menu, git, docs, icons); their
+  presence is not evidence that the engine tests are weak.
+
+This re-audit changed tests and documentation only; no production behaviour was
+changed for it.
+
 For the full documentation index, see [README.md](../README.md#documentation-index).

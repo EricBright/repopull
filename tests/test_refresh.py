@@ -12,6 +12,7 @@ from repopull.refresh import (
     AUTO_REFRESH_RECOMMENDED_S,
     NETWORK_RETRY_DELAYS_S,
     SUSPEND_DETECT_THRESHOLD_S,
+    SUSPEND_POLL_INTERVAL_S,
     SUSPEND_RESUME_GRACE_S,
     RefreshAction,
     RefreshDecision,
@@ -71,6 +72,7 @@ class WarningTests(unittest.TestCase):
         self.assertFalse(should_warn(0))
 
     def test_below_recommended_warns(self) -> None:
+        self.assertTrue(should_warn(1))
         self.assertTrue(should_warn(AUTO_REFRESH_FLOOR_S))
         self.assertTrue(should_warn(AUTO_REFRESH_RECOMMENDED_S - 1))
 
@@ -154,6 +156,7 @@ class DecisionTests(unittest.TestCase):
 
         self.assertIs(decision.action, RefreshAction.STOP)
         self.assertTrue(decision.clear_resume)
+        self.assertEqual(decision.delay_s, 0.0)
 
     def test_quit_and_pause_stop(self) -> None:
         for overrides in ({"quitting": True}, {"paused": True}):
@@ -254,13 +257,14 @@ class DecisionTests(unittest.TestCase):
 
         self.assertIs(decision.action, RefreshAction.RUN)
         self.assertTrue(decision.clear_resume)
+        self.assertEqual(decision.delay_s, 0.0)
 
     def test_timer_waits_for_in_flight_run(self) -> None:
         decision = decide_refresh(
             state(in_flight=True), RefreshEvent.TIMER
         )
 
-        self.assert_wait(decision, AUTO_REFRESH_IN_FLIGHT_RETRY_S)
+        self.assert_wait(decision, 60.0)
         self.assertTrue(decision.clear_resume)
 
     def test_timer_respects_cooldown(self) -> None:
@@ -269,6 +273,15 @@ class DecisionTests(unittest.TestCase):
         )
 
         self.assert_wait(decision, 400.0)
+
+    def test_timer_adds_jitter_to_the_remaining_cooldown(self) -> None:
+        decision = decide_refresh(
+            state(last_finished=500.0),
+            RefreshEvent.TIMER,
+            jitter_s=10.0,
+        )
+
+        self.assert_wait(decision, 410.0)
 
     def test_timer_without_repos_waits_interval(self) -> None:
         decision = decide_refresh(
@@ -328,6 +341,18 @@ class DecisionTests(unittest.TestCase):
 
         self.assert_wait(decision, 400.0)
 
+    def test_show_waits_for_a_sub_second_remainder(self) -> None:
+        decision = decide_refresh(
+            state(
+                pause_when_hidden=True,
+                last_finished=1_000.0,
+                now=1_899.5,
+            ),
+            RefreshEvent.SHOW,
+        )
+
+        self.assert_wait(decision, 0.5)
+
     def test_show_without_pause_uses_normal_schedule(self) -> None:
         decision = decide_refresh(
             state(pause_when_hidden=False, last_finished=0.0),
@@ -377,11 +402,18 @@ class SuspendDetectorTests(unittest.TestCase):
     def test_short_offset_change_is_ignored(self) -> None:
         detector = SuspendDetector(0.0)
 
-        self.assertEqual(
-            detector.poll(100.0 + SUSPEND_DETECT_THRESHOLD_S - 1, 100.0),
-            0.0,
-        )
+        self.assertEqual(detector.poll(104.0, 100.0), 0.0)
         self.assertEqual(detector.poll(103.0, 100.0), 0.0)
+
+    def test_gap_at_the_threshold_is_reported(self) -> None:
+        detector = SuspendDetector(0.0)
+
+        self.assertEqual(detector.poll(105.0, 100.0), 5.0)
+
+    def test_gap_above_the_threshold_is_reported(self) -> None:
+        detector = SuspendDetector(0.0)
+
+        self.assertAlmostEqual(detector.poll(105.2, 100.0), 5.2)
 
     def test_suspend_gap_is_reported_once(self) -> None:
         detector = SuspendDetector(0.0)
@@ -397,3 +429,6 @@ class SuspendDetectorTests(unittest.TestCase):
 
     def test_resume_grace_is_a_minute(self) -> None:
         self.assertEqual(SUSPEND_RESUME_GRACE_S, 60.0)
+
+    def test_suspend_poll_interval_is_thirty_seconds(self) -> None:
+        self.assertEqual(SUSPEND_POLL_INTERVAL_S, 30.0)

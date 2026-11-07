@@ -211,7 +211,7 @@ def stylesheet(palette: Palette = PALETTE) -> str:
         background: {p.surface2};
         border: 1px solid {p.line};
         border-radius: 8px;
-        padding: 8px 10px;
+        padding: 8px 12px;
         color: {p.text};
         selection-background-color: {p.accent};
         selection-color: {p.accent_text};
@@ -223,7 +223,7 @@ def stylesheet(palette: Palette = PALETTE) -> str:
         background: {p.surface2};
         border: 1px solid {p.line};
         border-radius: 8px;
-        padding: 6px;
+        padding: 8px 12px;
         color: {p.text};
         selection-background-color: {p.accent};
         selection-color: {p.accent_text};
@@ -235,7 +235,7 @@ def stylesheet(palette: Palette = PALETTE) -> str:
         background: {p.surface2};
         border: 1px solid {p.line};
         border-radius: 8px;
-        padding: 6px 8px;
+        padding: 6px 8px 6px 12px;
         color: {p.text};
     }}
     QCheckBox {{

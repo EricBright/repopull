@@ -14,9 +14,9 @@ The app watches a folder of remote third-party repositories. Then it discovers t
 
 **Current release: 0.4.12.** Tests and mypy pass; the latest AppImage is built
 from this checkout. No release blockers. The historical
-[test audit](docs/test-falsifiability.md) covers 0.2.3 and has not been rerun
-against the current suite; the 16 px icon keeps its branches at the cost of
-softness (see [branding](docs/branding.md)).
+[test audit](docs/test-falsifiability.md) covers 0.2.3; a 2026-11-07 re-audit
+covers the current development tree. The 16 px icon keeps its branches at the
+cost of softness (see [branding](docs/branding.md)).
 
 ## The problem the app tries to address
 

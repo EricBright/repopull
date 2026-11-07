@@ -1,5 +1,12 @@
 # Changelog
 
+## dev
+
+- Reran the test-falsifiability audit against the 224-test suite. Fixed seven
+  tests that could not fail, added 16 tests for config defaults, validation,
+  scheduler constants, jitter, and boundary cases, and recorded the remaining
+  mutation survivors in `docs/test-falsifiability.md`.
+
 ## 0.4.12 — 2026-11-07
 
 - Replaced the three immediate Refresh checkboxes with animated switches. Off
