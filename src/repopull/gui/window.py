@@ -228,6 +228,7 @@ class MainWindow(QMainWindow):
         else:
             self._reload_refs()
         self._build()
+        self._apply_field_insets()
         if self.filter in self.nav_buttons:
             self.nav_buttons[self.filter].setChecked(True)
         self._populate_settings()
@@ -499,6 +500,22 @@ class MainWindow(QMainWindow):
         layout.addStretch(1)
 
         return page
+
+    def _apply_field_insets(self) -> None:
+        """Give text fields a visible inset; QSS padding alone misses QLineEdit."""
+        for field in (self.search_box, self.settings_root):
+            field.setTextMargins(12, 0, 12, 0)
+        for spin in (
+            self.settings_max_depth,
+            self.settings_auto_minutes,
+            self.settings_delay,
+            self.settings_fetch_timeout,
+            self.settings_command_timeout,
+            self.settings_retention,
+        ):
+            edit = spin.lineEdit()
+            if edit is not None:
+                edit.setTextMargins(4, 0, 0, 0)
 
     def _build_settings(self) -> QWidget:
         page = QWidget()

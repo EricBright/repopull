@@ -1,9 +1,17 @@
 # Changelog
 
+## 0.4.14 — 2026-11-07
+
+- Fixed the field padding that 0.4.13 did not actually deliver for
+  `QLineEdit` and spin boxes: QSS padding moves the widget frame but not the
+  text. The watched-folder/search fields now use a 12 px text margin, and spin
+  boxes add 4 px inside their line edit. The ignore box already had visible
+  padding.
+
 ## 0.4.13 — 2026-11-07
 
-- Added 12 px left padding to the manually editable fields: watched folder,
-  search, ignore list, depth, interval, delays, timeouts, and log retention.
+- Added QSS padding to the manually editable fields. It was effective for the
+  ignore text area but not for `QLineEdit` or spin boxes; fixed in 0.4.14.
 - Reran the test-falsifiability audit against the 224-test suite. Fixed seven
   tests that could not fail, added 16 tests for config defaults, validation,
   scheduler constants, jitter, and boundary cases, and recorded the remaining

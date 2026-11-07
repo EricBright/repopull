@@ -632,6 +632,22 @@ if HAVE_PYSIDE:
                 self.assertTrue(window.auto_timer.isActive())
                 window.request_quit()
 
+        def test_manual_fields_have_a_visible_text_inset(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                window = MainWindow(self._config(base, self._tree(base)))
+
+                self.assertEqual(
+                    window.settings_root.textMargins().left(), 12
+                )
+                self.assertEqual(
+                    window.settings_max_depth.lineEdit()
+                    .textMargins()
+                    .left(),
+                    4,
+                )
+                window.request_quit()
+
         def test_refresh_section_reports_the_next_check(self) -> None:
             with tempfile.TemporaryDirectory() as tmp:
                 base = Path(tmp)

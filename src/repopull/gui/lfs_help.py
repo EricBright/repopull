@@ -82,6 +82,7 @@ class LfsHelpDialog(QDialog):
         layout.addWidget(QLabel(title))
         row = QHBoxLayout()
         field = QLineEdit(command)
+        field.setTextMargins(12, 0, 12, 0)
         field.setReadOnly(True)
         field.setToolTip("Select and copy this command")
         row.addWidget(field, 1)
