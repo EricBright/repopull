@@ -166,7 +166,8 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH=src:tests \
 ## 2026-11-07 re-audit (0.4.13 development tree)
 
 **Suite:** 224 tests at audit time; all running, no skips. The 0.4.14 padding
-test brings the current suite to 225. The conditional parent-death test
+test brought the suite to 225; 0.4.15 added 12 root-state tests for a current
+total of 237. The conditional parent-death test
 ran because `setpriv` is present. No test lacked an assertion, no assertion was
 swallowed by `try/except`, and no assertion was hidden inside a loop over a
 possibly-empty collection.

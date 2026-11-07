@@ -25,6 +25,13 @@ the library then fills. Nothing is hard-coded into the app. The initial scan
 runs in a background worker, so a slow or missing mount does not freeze the
 window; the empty view says it is scanning until the result arrives.
 
+If the watched folder now resolves to a different filesystem, the library
+explains the mismatch and offers **Repair saved root state**. The confirmation
+shows the saved and current filesystem identities; repairing replaces only the
+saved identity and does not touch the repositories. A reboot that changes only
+an unstable device number is accepted by the filesystem UUID, so the prompt
+should not appear for that case once the state file has a UUID.
+
 The last visited page, sidebar filter, and detail repository are remembered in
 `ui-state.json` next to `config.toml`. On launch the filter and page are
 restored; a detail page is restored only if that repository is still present.

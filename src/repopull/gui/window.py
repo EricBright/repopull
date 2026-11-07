@@ -91,7 +91,13 @@ from repopull.refresh import (
     should_warn,
 )
 from repopull.report import check_log_dir, load_latest_report
-from repopull.rootstate import ROOT_STATE_FILE, verify_root_state
+from repopull.rootstate import (
+    RootStateCheck,
+    check_root_state,
+    describe_identity,
+    describe_state,
+    save_root_state,
+)
 from repopull.uistate import UiState, load_ui_state, save_ui_state
 _ASSETS = Path(__file__).resolve().parent / "assets"
 
@@ -171,6 +177,7 @@ class MainWindow(QMainWindow):
         self.row_widgets: dict[str, RepoRow] = {}
         self.refs: list[RepoRef] = []
         self.discovery_error: str | None = None
+        self.root_state_check: RootStateCheck | None = None
         self.filter = (
             self._ui_state.filter
             if self._ui_state is not None
@@ -417,6 +424,18 @@ class MainWindow(QMainWindow):
         self.empty_label.setWordWrap(True)
         self.empty_label.hide()
         layout.addWidget(self.empty_label)
+
+        self.repair_button = QPushButton("Repair saved root state…")
+        self.repair_button.setObjectName("Primary")
+        self.repair_button.setToolTip(
+            "Review the saved and current disk identities, then accept the "
+            "current one if this is the disk you expect"
+        )
+        self.repair_button.clicked.connect(self._repair_root_state)
+        self.repair_button.hide()
+        layout.addWidget(
+            self.repair_button, 0, Qt.AlignmentFlag.AlignHCenter
+        )
 
         return page
 
@@ -1083,6 +1102,7 @@ class MainWindow(QMainWindow):
         self._discovery_generation += 1
         generation = self._discovery_generation
         self._discovery_callback = callback
+        self.root_state_check = None
         root = self.config.root
         if root is None:
             self.refs = []
@@ -1118,15 +1138,22 @@ class MainWindow(QMainWindow):
         self._discovery_task = None
         found = [ref for ref in refs if isinstance(ref, RepoRef)]
         self.refs = found
-        problem = verify_root_state(
-            self.config.log_dir, self.config.root, len(found)
-        ) if self.config.root is not None else None
+        check = (
+            check_root_state(
+                self.config.log_dir, self.config.root, len(found)
+            )
+            if self.config.root is not None
+            else None
+        )
+        self.root_state_check = check
+        problem = check.problem if check is not None else None
         if problem is not None:
             self.refs = []
-            self.discovery_error = (
-                f"{problem}. Remove {self.config.log_dir / ROOT_STATE_FILE} "
-                "if this is intentional."
-            )
+            self.discovery_error = problem
+            if check is not None and check.repairable:
+                self.discovery_error += (
+                    " Use Repair saved root state to accept this disk."
+                )
         else:
             self.discovery_error = None
         self._render_library()
@@ -1144,6 +1171,7 @@ class MainWindow(QMainWindow):
         self._discovery_task = None
         self._discovery_callback = None
         self.refs = []
+        self.root_state_check = None
         self.discovery_error = message
         self._render_library()
         self._update_status_block()
@@ -1154,6 +1182,7 @@ class MainWindow(QMainWindow):
         root = self.config.root
         if root is None:
             self.refs = []
+            self.root_state_check = None
             self.discovery_error = (
                 "No watched folder configured. Open Settings and choose one."
             )
@@ -1166,19 +1195,68 @@ class MainWindow(QMainWindow):
             )
         except DiscoveryError as exc:
             self.refs = []
+            self.root_state_check = None
             self.discovery_error = str(exc)
             return
-        problem = verify_root_state(
+        check = check_root_state(
             self.config.log_dir, root, len(self.refs)
         )
-        if problem is not None:
+        self.root_state_check = check
+        if check.problem is not None:
             self.refs = []
-            self.discovery_error = (
-                f"{problem}. Remove {self.config.log_dir / ROOT_STATE_FILE} "
-                "if this is intentional."
-            )
+            self.discovery_error = check.problem
+            if check.repairable:
+                self.discovery_error += (
+                    " Use Repair saved root state to accept this disk."
+                )
             return
         self.discovery_error = None
+
+    def _repair_root_state(self) -> None:
+        """Accept the current identity after the user confirms it."""
+        check = self.root_state_check
+        root = self.config.root
+        if check is None or root is None or not check.repairable:
+            return
+        text = (
+            "repopull records which filesystem the watched folder is on.\n\n"
+            f"Watched folder:\n{root}\n\n"
+            f"Saved: {describe_state(check.previous)}\n"
+            f"Current: {describe_identity(check.current)}\n\n"
+            "Only repair if this is the disk you expect. This replaces the "
+            "saved identity; it does not touch the repositories."
+        )
+        answer = QMessageBox.question(
+            self,
+            "Repair saved root state",
+            text,
+            QMessageBox.StandardButton.Yes
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            save_root_state(
+                self.config.log_dir, root, check.repo_count
+            )
+        except OSError as exc:
+            QMessageBox.warning(
+                self,
+                "repopull",
+                f"Could not repair the saved root state: {exc}",
+            )
+            return
+        self.root_state_check = None
+        self.discovery_error = None
+        if self._discover_async:
+            self._start_discovery()
+        else:
+            self._reload_refs()
+            self._render_library()
+            self._update_status_block()
+            self._restore_detail()
+        self._flash("Repaired saved root state")
 
     def _report_rows(self) -> dict[str, Row]:
         return self.rows_by_label
@@ -1228,6 +1306,7 @@ class MainWindow(QMainWindow):
 
         if visible:
             self.empty_label.hide()
+            self.repair_button.hide()
         else:
             if self.discovery_error is not None:
                 self.empty_label.setText(self.discovery_error)
@@ -1236,6 +1315,10 @@ class MainWindow(QMainWindow):
             else:
                 self.empty_label.setText("No repositories in this view.")
             self.empty_label.show()
+            self.repair_button.setVisible(
+                self.root_state_check is not None
+                and self.root_state_check.repairable
+            )
 
         self._update_banner()
 

@@ -40,4 +40,21 @@ mount the disk, copy [`config.example.toml`](../config.example.toml) to
 `config.toml`, and edit `root`, or run with `--root PATH` for one run.
 `repopull` prints those same steps when it fails.
 
+**"watched root is on a different device/filesystem than last time".**
+This guard catches a different disk mounted at the watched path. Device numbers
+can also change after a reboot without the disk changing; btrfs in particular
+uses an anonymous `0:N` device number. Newer state files compare the filesystem
+UUID, so that case is accepted automatically. A state file from 0.4.14 or
+earlier has no UUID and may need one repair:
+
+- In the GUI, click **Repair saved root state** and compare the saved and
+  current identities before confirming.
+- From the CLI, run `./repopull.sh repair-root` to preview, then
+  `./repopull.sh repair-root --yes` only if the current disk is the expected
+  one.
+
+If the current filesystem UUID differs, stop: the wrong disk may be mounted.
+Deleting `logs/root-state.json` also accepts the current disk, but skips the
+comparison.
+
 For the full documentation index, see [README.md](../README.md#documentation-index).

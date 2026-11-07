@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import json
 import os
 import tempfile
 import time
@@ -23,7 +24,7 @@ else:
 if HAVE_PYSIDE:
     from PySide6.QtCore import Qt, QThreadPool
     from PySide6.QtTest import QTest
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication, QMessageBox
 
     from repopull.config import Config, load_config, save_config
     from repopull.diagnostics import LfsStatus
@@ -73,6 +74,42 @@ if HAVE_PYSIDE:
 
                 self.assertEqual(window.visible_row_count(), 0)
                 self.assertIn("No watched folder", window.empty_label.text())
+                window.close()
+
+        def test_root_state_mismatch_offers_and_performs_repair(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = self._tree(base)
+                logs = base / "logs"
+                logs.mkdir()
+                (logs / "root-state.json").write_text(
+                    json.dumps(
+                        {
+                            "root": str(root),
+                            "device": root.stat().st_dev + 1,
+                            "repo_count": 3,
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                window = MainWindow(self._config(base, root))
+
+                self.assertEqual(window.visible_row_count(), 0)
+                self.assertIn("different device", window.empty_label.text())
+                self.assertFalse(window.repair_button.isHidden())
+
+                with patch(
+                    "repopull.gui.window.QMessageBox.question",
+                    return_value=QMessageBox.StandardButton.Yes,
+                ):
+                    window._repair_root_state()
+
+                self.assertIsNone(window.discovery_error)
+                self.assertEqual(window.visible_row_count(), 3)
+                self.assertTrue(window.repair_button.isHidden())
+                saved = json.loads((logs / "root-state.json").read_text())
+                self.assertEqual(saved["device"], root.stat().st_dev)
+                self.assertEqual(saved["version"], 2)
                 window.close()
 
         def test_behind_refs_selects_only_behind(self) -> None:

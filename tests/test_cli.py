@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import tempfile
 import unittest
 from datetime import datetime
@@ -65,3 +66,65 @@ class SyncBehindTests(unittest.TestCase):
 
             self.assertEqual(code, 0)
             self.assertIn("No repositories are behind", output.getvalue())
+
+
+class RepairRootTests(unittest.TestCase):
+    def _config(self, base: Path) -> Path:
+        root = base / "repos"
+        for name in ("alpha", "beta"):
+            (root / name / ".git").mkdir(parents=True)
+        path = base / "config.toml"
+        path.write_text(
+            f'root = "{root}"\nlog_dir = "{base / "logs"}"\n',
+            encoding="utf-8",
+        )
+        logs = base / "logs"
+        logs.mkdir()
+        (logs / "root-state.json").write_text(
+            json.dumps(
+                {
+                    "root": str(root),
+                    "device": root.stat().st_dev + 1,
+                    "repo_count": 2,
+                }
+            ),
+            encoding="utf-8",
+        )
+        return path
+
+    def test_repair_root_without_yes_only_shows_the_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            config_path = self._config(base)
+            output = io.StringIO()
+
+            with contextlib.redirect_stdout(output):
+                code = main(["--config", str(config_path), "repair-root"])
+
+            self.assertEqual(code, 0)
+            self.assertIn("No changes made", output.getvalue())
+            saved = json.loads(
+                (base / "logs" / "root-state.json").read_text()
+            )
+            self.assertNotIn("version", saved)
+
+    def test_repair_root_yes_accepts_the_current_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            config_path = self._config(base)
+            output = io.StringIO()
+
+            with contextlib.redirect_stdout(output):
+                code = main(
+                    ["--config", str(config_path), "repair-root", "--yes"]
+                )
+
+            self.assertEqual(code, 0)
+            self.assertIn("Repaired", output.getvalue())
+            saved = json.loads(
+                (base / "logs" / "root-state.json").read_text()
+            )
+            self.assertEqual(saved["version"], 2)
+            self.assertEqual(
+                saved["device"], (base / "repos").stat().st_dev
+            )

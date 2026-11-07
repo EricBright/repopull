@@ -21,9 +21,25 @@ The resolved `root` is the single link to the watched data. `repopull where`
 prints it, where it came from (`config.toml key "root"`, `--root`, or
 `not configured`), whether it exists and is writable, and how many repos it
 contains. Discovery also requires at least 64 MiB free on that filesystem.
-The last device and repository count are kept in `logs/root-state.json`; a
-different device at the same path, or an unexpectedly empty root, is refused.
-If that change is intentional, remove the state file and run again.
+The last filesystem identity and repository count are kept in
+`logs/root-state.json`. repopull records the filesystem UUID and mount source,
+with the device number as a fallback, and refuses a different filesystem at the
+same path or an unexpectedly empty root. A reboot can change a device number
+without changing the disk (btrfs uses an anonymous `0:N` device); the UUID keeps
+that from looking like a replacement.
+
+A state file written by 0.4.14 or earlier has no UUID, so its first device
+change may still be refused. Repair it with **Repair saved root state** in the
+GUI, or preview and accept it from the CLI:
+
+```bash
+./repopull.sh repair-root
+./repopull.sh repair-root --yes
+```
+
+The preview prints the saved and current identities. Only use `--yes` when the
+current disk is the one you expect; deleting `logs/root-state.json` also works,
+but skips the comparison.
 
 Command-line flags override the file. `--root` overrides `root`.
 
@@ -130,6 +146,8 @@ Commands:
 | *(none)* | Interactive menu. Holds the run lock. |
 | `list` | Print discovered labels, no network. |
 | `where` | Print the config file, resolved root, its source, whether it exists and is writable, and the repo count. |
+| `repair-root` | Show the saved and current watched-filesystem identities without changing anything. |
+| `repair-root --yes` | Accept the current identity after checking the preview. |
 | `status` | Fetch, then report what a sync would do. Changes no working tree. |
 | `sync` | Fetch, then fast-forward every clean, behind repo. |
 | `sync --behind` | Sync only repositories the last report found behind; up-to-date ones are not rechecked. |

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.15 — 2026-11-07
+
+- Watched-root identity now uses the filesystem UUID and mount source, with the
+  device number only as a fallback. This fixes a false "different device" refusal
+  after a reboot when btrfs reallocates its anonymous `0:N` device number for the
+  same disk. State files from 0.4.14 and earlier are upgraded after a matching
+  check.
+- Added **Repair saved root state** to the GUI mismatch view and
+  `repopull repair-root` to the CLI. Both show the saved and current identities;
+  `--yes` accepts the current one. Legacy state files can need this once.
+
 ## 0.4.14 — 2026-11-07
 
 - Fixed the field padding that 0.4.13 did not actually deliver for

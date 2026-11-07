@@ -26,7 +26,15 @@ from repopull.report import (
     render_report,
     report_to_dict,
 )
-from repopull.rootstate import ROOT_STATE_FILE, verify_root_state
+from repopull.rootstate import (
+    ROOT_STATE_FILE,
+    check_root_state,
+    describe_identity,
+    describe_state,
+    load_root_state,
+    root_identity,
+    save_root_state,
+)
 from repopull.runtime import LockError, run_lock
 from repopull.sync import status_report, sync_report
 
@@ -64,6 +72,15 @@ def _build_command_parser() -> argparse.ArgumentParser:
     sub.add_parser("list", help="list discovered repositories")
     sub.add_parser(
         "where", help="show the config file, the watched root, and whether they exist"
+    )
+    repair = sub.add_parser(
+        "repair-root",
+        help="accept the watched folder's current filesystem identity",
+    )
+    repair.add_argument(
+        "--yes",
+        action="store_true",
+        help="write the new identity; without this, only show it",
     )
 
     status = sub.add_parser("status", help="fetch and show what a sync would do")
@@ -123,14 +140,21 @@ def _select_refs(config: Config, patterns: Sequence[str]) -> list[RepoRef] | Non
         print(missing_root_advice(config), file=sys.stderr)
         return None
 
-    problem = verify_root_state(config.log_dir, root, len(refs))
-    if problem is not None:
-        print(f"repopull: {problem}", file=sys.stderr)
-        print(
-            "repopull: if this is intentional, remove "
-            f"{config.log_dir / ROOT_STATE_FILE} and try again.",
-            file=sys.stderr,
-        )
+    check = check_root_state(config.log_dir, root, len(refs))
+    if check.problem is not None:
+        print(f"repopull: {check.problem}", file=sys.stderr)
+        if check.repairable:
+            print(
+                "repopull: if this is the same disk, run "
+                "`repopull repair-root` (or `repopull repair-root --yes`).",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                "repopull: if this is intentional, remove "
+                f"{config.log_dir / ROOT_STATE_FILE} and try again.",
+                file=sys.stderr,
+            )
         return None
 
     if not refs:
@@ -157,6 +181,55 @@ def _select_refs(config: Config, patterns: Sequence[str]) -> list[RepoRef] | Non
         _fail(f"no repositories matched: {', '.join(patterns)}")
         return None
     return selected
+
+
+def _repair_root(config: Config, *, assume_yes: bool) -> int:
+    """Show or accept the watched folder's current filesystem identity."""
+    root = config.root
+    if root is None:
+        print("repopull: no watched folder configured", file=sys.stderr)
+        print(missing_root_advice(config), file=sys.stderr)
+        return 2
+    try:
+        refs = discover_repos(
+            root, max_depth=config.max_depth, ignore=config.ignore
+        )
+    except DiscoveryError as exc:
+        print(f"repopull: {exc}", file=sys.stderr)
+        print(missing_root_advice(config), file=sys.stderr)
+        return 2
+    if not refs:
+        print(
+            "repopull: cannot repair the root state: no repositories found "
+            f"under {root}",
+            file=sys.stderr,
+        )
+        print(no_repos_advice(config), file=sys.stderr)
+        return 2
+
+    try:
+        current = root_identity(root)
+    except OSError as exc:
+        return _fail(f"cannot inspect {root}: {exc}")
+
+    previous = load_root_state(config.log_dir)
+    print(f"watched folder: {root}")
+    print(f"saved identity: {describe_state(previous)}")
+    print(f"current identity: {describe_identity(current)}")
+    if not assume_yes:
+        print(
+            "No changes made. Run `repopull repair-root --yes` to accept "
+            "the current identity."
+        )
+        return 0
+    try:
+        save_root_state(config.log_dir, root, len(refs))
+    except OSError as exc:
+        return _fail(
+            f"could not write {config.log_dir / ROOT_STATE_FILE}: {exc}"
+        )
+    print(f"Repaired {config.log_dir / ROOT_STATE_FILE}.")
+    return 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -196,6 +269,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "where":
         print(describe_paths(config))
         return 0
+
+    if args.command == "repair-root":
+        return _repair_root(config, assume_yes=bool(args.yes))
 
     patterns = [str(item) for item in getattr(args, "only", [])]
     refs = _select_refs(config, patterns)

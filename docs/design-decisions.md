@@ -371,25 +371,33 @@ SIGKILL of repopull sends SIGTERM to git as well. Otherwise repopull falls back
 to direct git and the SIGKILL-parent gap remains. See
 [configuration.md](configuration.md#environment-variables).
 
-## 28. Discovery is asynchronous and remembers the root device
+## 28. Discovery is asynchronous and remembers the root filesystem
 
 **Context:** `os.walk()` on a removed USB mount can block the UI thread. A
 path-only root check also cannot tell that a different disk was mounted at the
-same path. The CLI has the same path problem without a UI to freeze.
+same path. The CLI has the same path problem without a UI to freeze. `st_dev`
+is not a stable disk identity: btrfs and other filesystems can use an anonymous
+`0:N` device, and the number can change across reboots while the same disk stays
+mounted at the same path.
 
 **Decision:** The GUI scans in a `QRunnable` and reports back through Qt signals;
 the empty view says "Scanning the watched folder…" until it finishes. On the
-first healthy discovery, `logs/root-state.json` records the path, `st_dev`, and
-repository count. A later mismatch (different device, or an empty root that was
-non-empty) is refused, with the state file named so the user can remove it for
-an intentional change. The CLI uses the same check.
+first healthy discovery, `logs/root-state.json` records the path, filesystem
+UUID, mount source, device number, and repository count. The UUID is the
+identity; the device number is only a fallback when no UUID is available. A
+later different UUID, or an empty root that was non-empty, is refused. Legacy
+state files without a UUID use the device fallback once, then are rewritten
+with the UUID after a successful check. The GUI offers **Repair saved root
+state** for a mismatch, and the CLI offers `repopull repair-root` (preview) and
+`repopull repair-root --yes` (accept).
 
-**Consequences:** A dead mount no longer freezes the GUI; a replaced disk at the
-same path is refused instead of quietly syncing the wrong repositories. An
-intentional disk replacement or a deliberately emptied root requires removing
-`logs/root-state.json` once. The state file lives with the logs, so it cannot
-detect a change if the log directory is on the same missing disk. Smoke tests
-and screenshots keep synchronous discovery so their output stays deterministic.
+**Consequences:** A reboot no longer looks like a disk replacement just because
+an anonymous device number changed. A real replacement is still refused when
+the UUID differs. A legacy state file can require one repair after its first
+device change; the repair dialog shows both identities so the user can confirm
+the disk. The state file lives with the logs, so it cannot detect a change if
+the log directory is on the same missing disk. Smoke tests and screenshots keep
+synchronous discovery so their output stays deterministic.
 
 ## 29. Remember the last GUI page and filter
 
