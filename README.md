@@ -15,8 +15,9 @@ The app watches a folder of remote third-party repositories. Then it discovers t
 **Current release: 0.4.14.** Tests and mypy pass; the latest AppImage is built
 from this checkout. No release blockers. The historical
 [test audit](docs/test-falsifiability.md) covers 0.2.3; a 2026-11-07 re-audit
-covers the current development tree. The 16 px icon keeps its branches at the
-cost of softness (see [branding](docs/branding.md)).
+covers the 0.4.13 tree at 224 tests (0.4.14 adds one GUI padding test). The
+16 px icon keeps its branches at the cost of softness (see
+[branding](docs/branding.md)).
 
 ## The problem the app tries to address
 
@@ -281,7 +282,7 @@ Runtime is Python 3.11+ with **no third-party packages**. Type checking needs
 | [docs/branding.md](docs/branding.md) | Maintainer | on-demand | changing or regenerating icons | Mark, optical cuts, assets, rebuild |
 | [docs/design-decisions.md](docs/design-decisions.md) | Domain expert | on-demand | asking why, or weighing an alternative | Decision records and rejected paths |
 | [docs/appglider-lessons.md](docs/appglider-lessons.md) | Domain expert | on-demand | researching GitHub API limits or the original GUI direction | 2026-11-05 AppGlider findings and sources |
-| [docs/test-falsifiability.md](docs/test-falsifiability.md) | Maintainer | on-demand | assessing test strength or coverage | Mutation/sabotage audit at 0.2.3 |
+| [docs/test-falsifiability.md](docs/test-falsifiability.md) | Maintainer | on-demand | assessing test strength or coverage | Mutation/sabotage audits at 0.2.3 and 2026-11-07 |
 | [docs/auto-refresh-plan.md](docs/auto-refresh-plan.md) | Maintainer | on-demand | reviewing the shipped 0.4.3 resident refresh/tray work | Historical 0.4.3 plan and session handoff |
 | [workflows/watched-repo-sync.md](workflows/watched-repo-sync.md) | Operator | on-demand | implementing or operating the sync loop | Loop spec, safety rules, acceptance |
 
