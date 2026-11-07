@@ -1,11 +1,15 @@
 # Changelog
 
-## dev
+## 0.4.13 — 2026-11-07
 
+- Added 12 px left padding to the manually editable fields: watched folder,
+  search, ignore list, depth, interval, delays, timeouts, and log retention.
 - Reran the test-falsifiability audit against the 224-test suite. Fixed seven
   tests that could not fail, added 16 tests for config defaults, validation,
   scheduler constants, jitter, and boundary cases, and recorded the remaining
   mutation survivors in `docs/test-falsifiability.md`.
+- Updated CI to `actions/checkout@v7` and `actions/setup-python@v7`, which run
+  on Node 24.
 
 ## 0.4.12 — 2026-11-07
 
