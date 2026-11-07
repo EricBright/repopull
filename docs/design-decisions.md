@@ -469,8 +469,8 @@ freshness while the window is open without paying that cost all day.
 **Decision:** Add opt-in `auto_refresh_pause_when_hidden`. When enabled, the
 automatic timer stops whenever the main window is not visible or is minimized.
 No automatic fetch, network retry, or suspend-resume check starts while hidden.
-When the window returns, the normal schedule starts again; if the interval is
-already due, one check runs. Manual runs from the window or tray are unaffected,
+When the window returns, the remaining interval continues; if it is already
+due, one check runs. Manual runs from the window or tray are unaffected,
 and an in-flight run is allowed to finish. The default is `false`, so existing
 behavior is unchanged.
 
@@ -495,10 +495,11 @@ hard to see and easy to regress.
 `decide_refresh(state, event)` function with three events (`SCHEDULE`, `TIMER`,
 `SHOW`) and three actions (`STOP`, `WAIT`, `RUN`). `MainWindow` builds a
 `RefreshState` snapshot and applies the decision; it no longer duplicates the
-conditions. `SCHEDULE` starts a fresh interval, `TIMER` rechecks the cooldown
-and runs when due, and `SHOW` catches up only when pause-when-hidden is on and
-the interval is already due. A pending resume leaves the grace timer alone; no
-repositories waits for the interval or network retry, not a tight loop.
+conditions. `SCHEDULE` waits only the remaining interval instead of restarting
+it, `TIMER` rechecks the cooldown and runs when due, and `SHOW` catches up only
+when pause-when-hidden is on and the interval is already due. A pending resume
+leaves the grace timer alone; no repositories waits for the interval or network
+retry, not a tight loop.
 
 **Consequences:** The decision table is exercised directly without Qt or real
 timers, and future refresh changes have one place to reason about. The window

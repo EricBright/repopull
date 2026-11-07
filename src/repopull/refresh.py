@@ -120,20 +120,43 @@ class RefreshDecision:
     clear_resume: bool = False
 
 
+def wait_remaining(
+    last_finished: float | None,
+    interval_s: int,
+    failures: int,
+    now: float,
+    *,
+    network: bool = False,
+) -> float:
+    """Seconds until the next automatic run is due.
+
+    The delay after a completed run is `next_delay`, measured from that run's
+    finish. Re-scheduling an already running countdown must not restart it:
+    showing the window, hiding it, or changing an unrelated setting should only
+    wait for whatever time is left.
+    """
+    gap = next_delay(interval_s, failures, network=network)
+    if last_finished is None:
+        return gap
+    return max(0.0, last_finished + gap - now)
+
+
 def _wait(state: RefreshState, jitter_s: float) -> RefreshDecision:
-    base = next_delay(
-        state.interval_s,
-        state.failures,
-        network=state.network_offline,
-    )
-    if state.network_offline:
-        delay = base
+    if state.has_repos:
+        delay = wait_remaining(
+            state.last_finished,
+            state.interval_s,
+            state.failures,
+            state.now,
+            network=state.network_offline,
+        )
     else:
-        delay = max(
-            base,
-            cooldown_remaining(
-                state.last_finished, state.now, state.interval_s
-            ),
+        # Nothing to check yet. Wait a whole interval instead of spinning on a
+        # zero delay while discovery is empty or the mount is unavailable.
+        delay = next_delay(
+            state.interval_s,
+            state.failures,
+            network=state.network_offline,
         )
     return RefreshDecision(
         RefreshAction.WAIT,
@@ -188,12 +211,22 @@ def decide_refresh(
     if event is RefreshEvent.SHOW and state.pause_when_hidden:
         due = (
             state.last_finished is not None
-            and cooldown_remaining(
-                state.last_finished, state.now, state.interval_s
+            and wait_remaining(
+                state.last_finished,
+                state.interval_s,
+                state.failures,
+                state.now,
+                network=state.network_offline,
             )
             <= 0
         )
-        if due and not state.in_flight and state.has_repos:
+        if due and state.in_flight:
+            return RefreshDecision(
+                RefreshAction.WAIT,
+                delay_s=AUTO_REFRESH_IN_FLIGHT_RETRY_S,
+                clear_resume=True,
+            )
+        if due and state.has_repos:
             return RefreshDecision(RefreshAction.RUN, clear_resume=True)
 
     return _wait(state, jitter_s)

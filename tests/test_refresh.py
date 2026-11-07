@@ -23,6 +23,7 @@ from repopull.refresh import (
     decide_refresh,
     next_delay,
     should_warn,
+    wait_remaining,
 )
 
 
@@ -123,6 +124,23 @@ class DelayTests(unittest.TestCase):
         self.assertEqual(next_delay(900, 1, network=True, jitter_s=10), 130.0)
         self.assertEqual(next_delay(900, 1, network=True, jitter_s=100), 180.0)
 
+    def test_wait_remaining_measures_from_last_finish(self) -> None:
+        self.assertEqual(
+            wait_remaining(500.0, 900, 0, 1_000.0), 400.0
+        )
+        self.assertEqual(
+            wait_remaining(500.0, 900, 1, 1_000.0), 1_300.0
+        )
+        self.assertEqual(
+            wait_remaining(940.0, 900, 1, 1_000.0, network=True), 60.0
+        )
+        self.assertEqual(
+            wait_remaining(500.0, 900, 0, 2_000.0), 0.0
+        )
+        self.assertEqual(
+            wait_remaining(None, 900, 0, 1_000.0), 900.0
+        )
+
 
 class DecisionTests(unittest.TestCase):
     def assert_wait(self, decision: RefreshDecision, delay: float) -> None:
@@ -180,12 +198,39 @@ class DecisionTests(unittest.TestCase):
         self.assert_wait(decision, 900.0)
         self.assertTrue(decision.clear_resume)
 
-    def test_schedule_starts_a_fresh_interval(self) -> None:
+    def test_schedule_waits_only_the_remaining_interval(self) -> None:
         decision = decide_refresh(
             state(last_finished=500.0), RefreshEvent.SCHEDULE
         )
 
-        self.assert_wait(decision, 900.0)
+        self.assert_wait(decision, 400.0)
+
+    def test_schedule_does_not_postpone_an_overdue_run(self) -> None:
+        decision = decide_refresh(
+            state(last_finished=0.0), RefreshEvent.SCHEDULE
+        )
+
+        self.assert_wait(decision, 0.0)
+
+    def test_schedule_keeps_failure_backoff_from_last_finish(self) -> None:
+        decision = decide_refresh(
+            state(last_finished=500.0, failures=1),
+            RefreshEvent.SCHEDULE,
+        )
+
+        self.assert_wait(decision, 1_300.0)
+
+    def test_schedule_keeps_network_retry_from_last_finish(self) -> None:
+        decision = decide_refresh(
+            state(
+                last_finished=940.0,
+                network_offline=True,
+                failures=1,
+            ),
+            RefreshEvent.SCHEDULE,
+        )
+
+        self.assert_wait(decision, 60.0)
 
     def test_schedule_uses_network_retry_ladder(self) -> None:
         decision = decide_refresh(
@@ -232,6 +277,13 @@ class DecisionTests(unittest.TestCase):
 
         self.assert_wait(decision, 900.0)
 
+    def test_timer_without_repos_does_not_spin_when_overdue(self) -> None:
+        decision = decide_refresh(
+            state(has_repos=False, last_finished=0.0), RefreshEvent.TIMER
+        )
+
+        self.assert_wait(decision, 900.0)
+
     def test_timer_in_flight_and_no_repos_still_waits_for_run(self) -> None:
         decision = decide_refresh(
             state(has_repos=False, in_flight=True),
@@ -274,7 +326,7 @@ class DecisionTests(unittest.TestCase):
             RefreshEvent.SHOW,
         )
 
-        self.assert_wait(decision, 900.0)
+        self.assert_wait(decision, 400.0)
 
     def test_show_without_pause_uses_normal_schedule(self) -> None:
         decision = decide_refresh(
@@ -282,7 +334,19 @@ class DecisionTests(unittest.TestCase):
             RefreshEvent.SHOW,
         )
 
-        self.assert_wait(decision, 900.0)
+        self.assert_wait(decision, 0.0)
+
+    def test_show_respects_failure_backoff(self) -> None:
+        decision = decide_refresh(
+            state(
+                pause_when_hidden=True,
+                last_finished=500.0,
+                failures=1,
+            ),
+            RefreshEvent.SHOW,
+        )
+
+        self.assert_wait(decision, 1_300.0)
 
     def test_show_with_in_flight_run_waits(self) -> None:
         decision = decide_refresh(
@@ -294,7 +358,7 @@ class DecisionTests(unittest.TestCase):
             RefreshEvent.SHOW,
         )
 
-        self.assert_wait(decision, 900.0)
+        self.assert_wait(decision, AUTO_REFRESH_IN_FLIGHT_RETRY_S)
 
     def test_jitter_is_added_once(self) -> None:
         decision = decide_refresh(

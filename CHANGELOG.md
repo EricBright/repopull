@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.11 — 2026-11-07
+
+- Automatic refresh now waits only the time remaining since the last completed
+  run. Showing or hiding the window, changing the interval, or saving an
+  unrelated setting no longer restarts the full countdown; an overdue check
+  runs promptly. This also removes a one-millisecond timer loop when the
+  repository list is empty.
+- Clarified the Settings hint: background and refresh changes save and apply
+  immediately, so **Save settings** stays disabled for them.
+- Added a next-check line to Settings → Refresh and the tray tooltip, so the
+  countdown is visible instead of inferred from a disabled Save button.
+
 ## 0.4.10 — 2026-11-06
 
 - Refactored automatic-refresh decisions into a pure `decide_refresh` table in

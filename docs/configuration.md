@@ -63,8 +63,9 @@ collides.
 above 86400 s are clamped down. When enabled, only a **status** run (fetch and
 preview) is started; sync is never automatic. Manual runs reset the timer, an
 active run is never overlapped, and failures double the next delay up to one
-hour. The GUI edits minutes, warns below 15 minutes, and uses a hard 5-minute
-floor.
+hour. The countdown runs from the last completed check; showing or hiding the
+window, changing the interval, or saving another setting does not restart it.
+The GUI edits minutes, warns below 15 minutes, and uses a hard 5-minute floor.
 
 A status run reads each repository's `.git` directory and may wake a spinning
 hard disk, whether it is internal or external. SSDs and NVMe drives do not have
@@ -75,9 +76,10 @@ power-management settings.
 
 `auto_refresh_pause_when_hidden = true` stops the automatic timer when the
 window is closed to the tray or minimized. No automatic fetch, network retry, or
-resume check runs while hidden. When the window returns, one check runs if the
-interval is due; a manual run from the tray or window still works at any time.
-The setting is off by default and only affects automatic runs.
+resume check runs while hidden. When the window returns, the remaining interval
+continues, and one check runs if it is already due; a manual run from the tray
+or window still works at any time. The setting is off by default and only
+affects automatic runs.
 
 A DNS, connection, proxy, reset, or timeout failure is treated as a network
 outage. Two consecutive such failures stop the sweep; the remaining

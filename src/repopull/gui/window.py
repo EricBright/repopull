@@ -755,11 +755,17 @@ class MainWindow(QMainWindow):
         card.add_note(self.settings_auto_warning)
 
         immediate = QLabel(
-            "Background and refresh changes apply immediately."
+            "Background and refresh changes save and apply immediately, so "
+            "Save settings stays disabled for them."
         )
         immediate.setObjectName("SettingHint")
         immediate.setWordWrap(True)
         card.add_note(immediate)
+
+        self.settings_auto_next = QLabel("")
+        self.settings_auto_next.setObjectName("SettingHint")
+        self.settings_auto_next.setWordWrap(True)
+        card.add_note(self.settings_auto_next)
 
         self.settings_background.toggled.connect(self._on_background_toggled)
         self.settings_auto.toggled.connect(self._on_auto_toggled)
@@ -1512,6 +1518,55 @@ class MainWindow(QMainWindow):
         self._apply_background_mode()
         self._schedule_auto_refresh()
 
+    def _clock_label(self, seconds: float) -> str:
+        """Format a future local time without a ticking countdown."""
+        target = time.time() + max(0.0, seconds)
+        when = time.localtime(target)
+        clock = time.strftime("%H:%M", when)
+        target_day = time.strftime("%Y-%m-%d", when)
+        today = time.strftime("%Y-%m-%d", time.localtime())
+        if target_day == today:
+            return f"today at {clock}"
+        tomorrow = time.strftime(
+            "%Y-%m-%d", time.localtime(time.time() + 86_400)
+        )
+        if target_day == tomorrow:
+            return f"tomorrow at {clock}"
+        return time.strftime("%a at %H:%M", when)
+
+    def _auto_next_text(self) -> str:
+        if self.config.auto_refresh_s <= 0:
+            return "Automatic refresh is off."
+        if self._auto_paused:
+            return "Automatic refresh is paused."
+        if (
+            self.config.auto_refresh_pause_when_hidden
+            and not self._auto_visible_allowed()
+        ):
+            return (
+                "Paused while hidden; the next check runs after the window "
+                "returns, if due."
+            )
+        if self._resume_pending:
+            return "Checking shortly after resume."
+        if self.task is not None:
+            return (
+                "A status check is running; the next interval starts when it "
+                "finishes."
+            )
+        remaining = self.auto_timer.remainingTime()
+        if remaining < 0:
+            return "No automatic check is scheduled."
+        return (
+            "Next automatic status check: "
+            f"{self._clock_label(remaining / 1_000)}."
+        )
+
+    def _update_auto_feedback(self) -> None:
+        label = getattr(self, "settings_auto_next", None)
+        if label is not None:
+            label.setText(self._auto_next_text())
+
     def _update_auto_controls(self) -> None:
         self.settings_auto_minutes.setEnabled(True)
         self.settings_hidden_pause.setEnabled(
@@ -1835,6 +1890,7 @@ class MainWindow(QMainWindow):
             self._resume_pending = False
         else:
             self._schedule_auto_refresh()
+        self._update_auto_feedback()
         self._update_tray_tooltip()
 
     def _jitter_seconds(self) -> float:
@@ -1867,12 +1923,15 @@ class MainWindow(QMainWindow):
             self._resume_pending = False
         if decision.action is RefreshAction.STOP:
             self.auto_timer.stop()
+            self._update_auto_feedback()
             return
         if decision.action is RefreshAction.WAIT:
             self.auto_timer.start(max(1, int(decision.delay_s * 1000)))
+            self._update_auto_feedback()
             return
         self.auto_timer.stop()
         self._start_run(self.refs, force=False, mode="status", auto=True)
+        self._update_auto_feedback()
 
     def _resume_after_visible(self) -> None:
         """Resume the timer, or catch up one run when the interval is due."""
@@ -1929,6 +1988,7 @@ class MainWindow(QMainWindow):
         self.auto_timer.stop()
         self._resume_pending = True
         self._resume_timer.start(int(SUSPEND_RESUME_GRACE_S * 1000))
+        self._update_auto_feedback()
         minutes = max(1, round(gap_s / 60))
         self._flash(f"Resumed after {minutes} min; checking in 60 s…")
 
@@ -1988,6 +2048,12 @@ class MainWindow(QMainWindow):
                 text += "\nNetwork unavailable; retrying"
             else:
                 text += "\nAutomatic refresh on"
+                remaining = self.auto_timer.remainingTime()
+                if remaining >= 0:
+                    text += (
+                        " · next check "
+                        f"{self._clock_label(remaining / 1_000)}"
+                    )
         self.tray.setToolTip(text)
 
     def _start_run(
@@ -2049,6 +2115,7 @@ class MainWindow(QMainWindow):
         task.signals.cancelled.connect(self._on_cancelled)
         task.signals.failed.connect(self._on_failed)
         self.task = task
+        self._update_auto_feedback()
         QThreadPool.globalInstance().start(task)
 
     def _set_busy(self, busy: bool) -> None:

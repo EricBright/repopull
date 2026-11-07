@@ -602,6 +602,57 @@ if HAVE_PYSIDE:
                 self.assertTrue(window.auto_timer.isActive())
                 window.request_quit()
 
+        def test_refresh_section_reports_the_next_check(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                config = dataclasses.replace(
+                    self._config(base, self._tree(base)),
+                    auto_refresh_s=900,
+                )
+                window = MainWindow(config)
+
+                with patch.object(
+                    window, "_jitter_seconds", return_value=0.0
+                ):
+                    window._last_network_finished = time.monotonic() - 600
+                    window._schedule_auto_refresh()
+                    self.assertIn(
+                        "Next automatic status check",
+                        window.settings_auto_next.text(),
+                    )
+
+                    window.settings_auto.setChecked(False)
+                    self.assertIn(
+                        "off", window.settings_auto_next.text()
+                    )
+                window.request_quit()
+
+        def test_interval_change_keeps_the_remaining_countdown(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                config = dataclasses.replace(
+                    self._config(base, self._tree(base)),
+                    auto_refresh_s=900,
+                )
+                window = MainWindow(config)
+
+                with patch.object(
+                    window, "_jitter_seconds", return_value=0.0
+                ):
+                    window._last_network_finished = time.monotonic() - 600
+                    window._schedule_auto_refresh()
+                    self.assertAlmostEqual(
+                        window.auto_timer.interval(), 300_000, delta=3_000
+                    )
+
+                    # Changing the interval recalculates from the last run
+                    # instead of starting a fresh countdown.
+                    window.settings_auto_minutes.setValue(30)
+                    self.assertAlmostEqual(
+                        window.auto_timer.interval(), 1_200_000, delta=3_000
+                    )
+                window.request_quit()
+
         def test_hidden_pause_catches_up_after_a_long_hide(self) -> None:
             with tempfile.TemporaryDirectory() as tmp:
                 base = Path(tmp)
@@ -807,7 +858,9 @@ if HAVE_PYSIDE:
                     )
 
                 self.assertTrue(window._network_offline)
-                self.assertEqual(window.auto_timer.interval(), 120_000)
+                self.assertAlmostEqual(
+                    window.auto_timer.interval(), 120_000, delta=1_000
+                )
                 window.request_quit()
 
         def test_resume_defers_auto_refresh_by_grace(self) -> None:

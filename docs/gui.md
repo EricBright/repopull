@@ -78,12 +78,15 @@ Normal minimize stays in the taskbar. **Check folder** also scans in the
 background.
 
 **Refresh status automatically** is status-only, off by default, has a 5-minute
-hard floor, and shows an orange warning below 15 minutes. A manual status or sync
-resets the next automatic run. On Linux, when automatic refresh is on, a wake
-from suspend is detected and the app waits 60 seconds for the desktop and network
-to settle before running one status check; missed intervals are not queued. If a
-run was in flight, that run finishes first. Two consecutive network-level fetch
-failures stop that sweep and mark the remaining repositories "not attempted";
+hard floor, and shows an orange warning below 15 minutes. The countdown runs
+from the last completed check; showing the window or changing the interval does
+not restart it. The section and the tray tooltip show the next scheduled check.
+A manual status or sync resets the next automatic run. On Linux, when automatic
+refresh is on, a wake from suspend is detected and the app waits 60 seconds for
+the desktop and network to settle before running one status check; missed
+intervals are not queued. If a run was in flight, that run finishes first. Two
+consecutive network-level fetch failures stop that sweep and mark the remaining
+repositories "not attempted";
 automatic retries are 2, 5, 15, 30, and 60 minutes, so a reconnect is noticed
 quickly without repeatedly timing out every repository.
 
