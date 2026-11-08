@@ -12,12 +12,13 @@ The app watches a folder of remote third-party repositories. Then it discovers t
 
 ## Status
 
-**Current release: 0.4.16.** Tests and mypy pass; the latest AppImage is built
-from this checkout. No release blockers. The historical
+**Current release: 0.5.0.** Tests and mypy pass; the latest AppImage was built
+from the 0.5.0 tree. No release blockers. The historical
 [test audit](docs/test-falsifiability.md) covers 0.2.3; a 2026-11-07 re-audit
 covers the 0.4.13 tree at 224 tests; 0.4.14 added one GUI padding test,
-0.4.15 added 12 root-state tests, and 0.4.16 added 12 (249 current). The 16 px
-icon keeps its branches at the cost of softness (see
+0.4.15 added 12 root-state tests, 0.4.16 added 12, and 0.5.0 adds 15 for
+per-repository holds, row labels, Open folder, and Next check (264 current).
+The 16 px icon keeps its branches at the cost of softness (see
 [branding](docs/branding.md)).
 
 ## The problem the app tries to address
@@ -117,18 +118,19 @@ after the subcommand.
 ```
 
 The GUI reads the same `config.toml`, repositories, and `logs/latest.json` as the
-CLI. It shows one row per repo with a status chip, updates each row as the sweep
-progresses, supports Refresh status, Sync all, a detail page, per-repo Force sync,
-and settings grouped into Watching, Refresh, Network, Updates, and Storage
-sections. See [docs/gui.md](docs/gui.md).
+CLI. It shows one row per repo with a state chip and counts in the subtitle,
+updates each row as the sweep progresses, supports Refresh status, Sync all, and
+a detail page with **Open folder** and per-repo bulk-action holds alongside
+Force sync. Settings are grouped into Watching, Refresh, Network, Updates, and
+Storage sections. See [docs/gui.md](docs/gui.md).
 
 Settings → Refresh can keep repopull in the system tray and refresh status
 automatically. Auto-refresh is off by default, status-only, never runs more
 often than every 5 minutes, and can pause while the window is hidden or
 minimized. 15 minutes or longer is recommended. The countdown is measured from
 the last completed check; showing the window or changing the interval does not
-restart it. The Refresh section and the tray tooltip show the next scheduled
-check.
+restart it. The sidebar, Refresh section, and tray tooltip show the next
+scheduled check.
 
 The tray icon is visible while repopull runs; the tray switch controls whether
 closing hides to it. The Refresh switches and the interval save immediately.
@@ -142,14 +144,14 @@ importable, otherwise it lets `uv` provide it for that run.
 
 ```bash
 make appimage
-./dist/repopull-0.4.16-x86_64.AppImage
+./dist/repopull-0.5.0-x86_64.AppImage
 ```
 
 The image bundles Python 3.13, PySide6 and repopull. Run the CLI from it with
 `--cli`:
 
 ```bash
-./dist/repopull-0.4.16-x86_64.AppImage --cli status
+./dist/repopull-0.5.0-x86_64.AppImage --cli status
 ```
 
 It keeps `config.toml` and logs in `~/.config/repopull` (or `$REPOPULL_HOME`).
@@ -250,7 +252,7 @@ make test        # unit and integration tests, offline, uses temp repos
 make typecheck   # mypy --strict
 make check       # both
 make gui         # launch the optional PySide6 interface
-make appimage    # build dist/repopull-0.4.16-x86_64.AppImage
+make appimage    # build dist/repopull-0.5.0-x86_64.AppImage
 make bump        # increment the patch version
 make release     # check, bump the patch, build the AppImage
 ```

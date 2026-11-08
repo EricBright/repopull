@@ -189,6 +189,17 @@ def stylesheet(palette: Palette = PALETTE) -> str:
     QPushButton#Link:hover {{
         color: #93b6ff;
     }}
+    QPushButton#FaintLink {{
+        background: transparent;
+        border: none;
+        color: {p.faint};
+        text-align: left;
+        padding: 2px 0;
+        font-size: 12px;
+    }}
+    QPushButton#FaintLink:hover {{
+        color: {p.muted};
+    }}
     QPushButton#Nav {{
         text-align: left;
         background: transparent;

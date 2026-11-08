@@ -525,4 +525,44 @@ still owns the timers and the run itself, so the seam is the state snapshot and
 the three actions. See [configuration.md](configuration.md#automatic-refresh)
 and [gui.md](gui.md#settings).
 
+## 34. Rows show state in the chip and numbers in the subtitle
+
+**Context:** The row chip carried commit counts (`↑ 233 behind`, `✓ 17 updated`)
+and also had to carry new per-repository policy labels. Combining a policy and a
+count in a fixed 152 px chip forced awkward abbreviations, and a successful sync
+left an event (`17 updated`) looking like a persistent state.
+
+**Decision:** The chip carries only a state (`Behind`, `Up to date`, `Skipped`,
+`Error`) or a hold (`No checks`, `No sync`, `No checks/sync`). Counts move to the
+subtitle, where width is flexible; behind counts keep the chip's orange. A
+successful sync renders `Up to date` plus `N commits pulled at last sync`; a force
+sync uses its detail (`hard reset to upstream at last sync`). The "at last sync"
+phrase is historical, so it needs no expiry timer or per-row timestamp. A held
+repository excluded from checks shows no count at all because its row is stale.
+
+**Consequences:** Counts can no longer overflow the chip, and every policy label
+fits. Counts are less visually prominent, so behind counts are coloured. The
+next check replaces the event text naturally; if an event-aware age is wanted
+later, per-row observation timestamps would be required. See
+[gui.md](gui.md#what-it-does).
+
+## 35. Bulk-action holds are configuration, not UI state
+
+**Context:** Per-repository "skip this in Refresh status / Sync all" switches
+change what a run touches. Keeping them in `ui-state.json` would make them
+disappear with cosmetic state and would leave the CLI silently disagreeing with
+the GUI.
+
+**Decision:** Store exact relative labels in `config.toml` as
+`exclude_from_refresh` and `exclude_from_sync`. The repository page saves them
+immediately through a comment-preserving updater. Bulk GUI, tray, automatic,
+CLI, and menu runs obey them; explicit per-repository actions and `--only`
+override them. Holds from checks are treated as stale for totals; holds from
+sync remain live because refresh still runs.
+
+**Consequences:** The terminal and GUI agree. Renaming a repository leaves a
+stale label, which is harmless but no longer matches; pruning would risk losing
+holds while a disk is unmounted. See
+[configuration.md](configuration.md#per-repository-holds).
+
 For the full documentation index, see [README.md](../README.md#documentation-index).

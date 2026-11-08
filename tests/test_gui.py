@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import os
+import shutil
 import tempfile
 import time
 import unittest
@@ -31,6 +32,7 @@ if HAVE_PYSIDE:
     from repopull.gui.rows import row_view, unchecked_view
     from repopull.gui.settings import SETTINGS_SECTIONS
     from repopull.gui.switch import Switch
+    from repopull.gui.theme import STATUS_COLORS
     from repopull.gui.window import DiscoveryTask, MainWindow
     from repopull.rootstate import RootStateCheck
     from repopull.models import Outcome, Report, Row
@@ -174,6 +176,206 @@ if HAVE_PYSIDE:
                 window._open_watched_settings()
                 self.assertIs(
                     window.stack.currentWidget(), window.settings_page
+                )
+                window.close()
+
+        def test_open_folder_uses_the_default_handler(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = self._tree(base)
+                window = MainWindow(self._config(base, root))
+                window.current_label = "alpha"
+
+                with patch(
+                    "repopull.gui.window.QDesktopServices.openUrl",
+                    return_value=True,
+                ) as open_url:
+                    window._open_folder_current()
+
+                url = open_url.call_args.args[0]
+                self.assertEqual(url.toLocalFile(), str(root / "alpha"))
+                window.close()
+
+        def test_open_folder_reports_a_missing_directory(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = self._tree(base)
+                window = MainWindow(self._config(base, root))
+                window.current_label = "alpha"
+                shutil.rmtree(root / "alpha")
+
+                with patch(
+                    "repopull.gui.window.QDesktopServices.openUrl"
+                ) as open_url:
+                    window._open_folder_current()
+
+                open_url.assert_not_called()
+                self.assertIn("Folder not found", window.status_message.text())
+                window.close()
+
+        def test_next_check_line_and_settings_link(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                config = dataclasses.replace(
+                    self._config(base, self._tree(base)),
+                    auto_refresh_s=900,
+                )
+                window = MainWindow(config)
+
+                self.assertTrue(
+                    window.next_label.text().startswith("Next check ")
+                )
+                self.assertNotIn("— off", window.next_label.text())
+                window.next_label.click()
+                self.assertIs(
+                    window.stack.currentWidget(), window.settings_page
+                )
+                self.assertEqual(window.settings_stack.currentIndex(), 1)
+
+                window.config = dataclasses.replace(
+                    window.config, auto_refresh_s=0
+                )
+                window._schedule_auto_refresh()
+                window._update_status_block()
+                self.assertEqual(window.next_label.text(), "Next check — off")
+                window.close()
+
+        def test_bulk_refs_honor_exclusions(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                config = dataclasses.replace(
+                    self._config(base, self._tree(base)),
+                    exclude_from_refresh=("alpha",),
+                    exclude_from_sync=("beta",),
+                )
+                window = MainWindow(config)
+
+                self.assertEqual(
+                    [ref.label for ref in window._status_refs()],
+                    ["beta", "gamma"],
+                )
+                self.assertEqual(
+                    [ref.label for ref in window._sync_refs()],
+                    ["alpha", "gamma"],
+                )
+                window.close()
+
+        def test_hold_rows_filters_and_banner(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = self._tree(base)
+                config = dataclasses.replace(
+                    self._config(base, root),
+                    exclude_from_refresh=("gamma",),
+                    exclude_from_sync=("beta",),
+                )
+                write_log(
+                    Report(
+                        mode="status",
+                        started_at=datetime(2026, 11, 5, 16, 0, 0),
+                        elapsed_s=1.0,
+                        rows=(
+                            Row("alpha", "main", Outcome.BEHIND, 3, ""),
+                            Row("beta", "main", Outcome.BEHIND, 4, ""),
+                            Row("gamma", "main", Outcome.BEHIND, 5, ""),
+                        ),
+                    ),
+                    base / "logs",
+                )
+                window = MainWindow(config)
+                window._set_filter("behind")
+
+                self.assertEqual(
+                    [view.label for view in window._visible_rows()],
+                    ["alpha", "beta"],
+                )
+                self.assertEqual(window.nav_buttons["behind"].text(), "Behind  2")
+                self.assertIn(
+                    "1 repository can be updated · 1 held",
+                    window.banner_label.text(),
+                )
+                self.assertFalse(window.banner_button.isHidden())
+                self.assertEqual(
+                    [ref.label for ref in window._behind_refs()], ["alpha"]
+                )
+                self.assertEqual(
+                    window.row_widgets["alpha"].chip.text(), "Behind"
+                )
+                self.assertEqual(
+                    window.row_widgets["beta"].chip.text(), "No sync"
+                )
+                self.assertEqual(
+                    window.row_widgets["beta"].sub_label.text(),
+                    'main · <span style="color:'
+                    f'{STATUS_COLORS["warn"]}; font-weight:600;">'
+                    "4 commits behind</span>",
+                )
+
+                window._set_filter("all")
+                self.assertEqual(
+                    window.row_widgets["gamma"].chip.text(), "No checks"
+                )
+                window.close()
+
+        def test_banner_with_only_held_rows_hides_the_action(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = self._tree(base)
+                config = dataclasses.replace(
+                    self._config(base, root),
+                    exclude_from_sync=("beta",),
+                )
+                write_log(
+                    Report(
+                        mode="status",
+                        started_at=datetime(2026, 11, 5, 16, 0, 0),
+                        elapsed_s=1.0,
+                        rows=(
+                            Row("alpha", "main", Outcome.UP_TO_DATE, 0, ""),
+                            Row("beta", "main", Outcome.BEHIND, 4, ""),
+                        ),
+                    ),
+                    base / "logs",
+                )
+                window = MainWindow(config)
+
+                self.assertIn(
+                    "1 repository is held from Sync all",
+                    window.banner_label.text(),
+                )
+                self.assertTrue(window.banner_button.isHidden())
+                self.assertEqual(window._behind_refs(), [])
+                self.assertEqual(window.nav_buttons["behind"].text(), "Behind  1")
+                window.close()
+
+        def test_detail_hold_switches_persist(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = self._tree(base)
+                path = base / "config.toml"
+                config = dataclasses.replace(
+                    self._config(base, root),
+                    config_path=path,
+                    root_source="test",
+                )
+                save_config(config, path)
+                window = MainWindow(config)
+                window.current_label = "alpha"
+
+                window._populate_detail_holds("alpha")
+                window.detail_exclude_refresh.setChecked(True)
+                self.assertIn(
+                    "alpha", load_config(config_path=path).exclude_from_refresh
+                )
+
+                window.detail_exclude_sync.setChecked(True)
+                loaded = load_config(config_path=path)
+                self.assertIn("alpha", loaded.exclude_from_refresh)
+                self.assertIn("alpha", loaded.exclude_from_sync)
+
+                window.detail_exclude_refresh.setChecked(False)
+                self.assertNotIn(
+                    "alpha", load_config(config_path=path).exclude_from_refresh
                 )
                 window.close()
 
@@ -436,20 +638,79 @@ if HAVE_PYSIDE:
 
         def test_chip_text_and_kind(self) -> None:
             view = row_view(Row("x", "main", Outcome.BEHIND, 12, ""))
-            self.assertEqual(view.status, "↑ 12 behind")
+            self.assertEqual(view.status, "Behind")
             self.assertEqual(view.kind, "warn")
+            self.assertEqual(view.count_text, "12 commits behind")
+            self.assertEqual(view.count_color, STATUS_COLORS["warn"])
 
             updated = row_view(Row("x", "main", Outcome.UPDATED, 1, ""))
-            self.assertEqual(updated.status, "✓ 1 updated")
+            self.assertEqual(updated.status, "Up to date")
             self.assertEqual(updated.kind, "ok")
+            self.assertEqual(
+                updated.count_text, "1 commit pulled at last sync"
+            )
             self.assertEqual(unchecked_view("x").kind, "neutral")
+            self.assertEqual(unchecked_view("x").status, "Not checked")
 
         def test_chip_formats_large_counts(self) -> None:
             behind = row_view(Row("x", "main", Outcome.BEHIND, 1_234, ""))
             updated = row_view(Row("x", "main", Outcome.UPDATED, 12_345, ""))
 
-            self.assertEqual(behind.status, "↑ 1,234 behind")
-            self.assertEqual(updated.status, "✓ 12,345 updated")
+            self.assertEqual(behind.status, "Behind")
+            self.assertEqual(behind.count_text, "1,234 commits behind")
+            self.assertEqual(updated.status, "Up to date")
+            self.assertEqual(
+                updated.count_text, "12,345 commits pulled at last sync"
+            )
+
+        def test_hold_labels_suppress_stale_counts(self) -> None:
+            behind = Row("x", "main", Outcome.BEHIND, 12, "")
+
+            no_checks = row_view(behind, no_checks=True)
+            self.assertEqual(no_checks.status, "No checks")
+            self.assertEqual(no_checks.kind, "neutral")
+            self.assertEqual(no_checks.count_text, "")
+            self.assertEqual(no_checks.detail, "")
+            self.assertIn("Sync all can still update", no_checks.hint)
+
+            no_sync = row_view(behind, no_sync=True)
+            self.assertEqual(no_sync.status, "No sync")
+            self.assertEqual(no_sync.count_text, "12 commits behind")
+            self.assertEqual(no_sync.count_color, STATUS_COLORS["warn"])
+            self.assertIn("Refresh status still runs", no_sync.hint)
+
+            both = row_view(behind, no_checks=True, no_sync=True)
+            self.assertEqual(both.status, "No checks/sync")
+            self.assertEqual(both.count_text, "")
+            self.assertIn("both bulk actions", both.hint)
+
+            self.assertEqual(
+                unchecked_view("x", no_checks=True).status, "No checks"
+            )
+            self.assertEqual(
+                unchecked_view("x", no_sync=True).status, "No sync"
+            )
+            self.assertEqual(
+                unchecked_view("x", no_checks=True, no_sync=True).status,
+                "No checks/sync",
+            )
+
+        def test_force_sync_uses_detail_not_a_pulled_count(self) -> None:
+            view = row_view(
+                Row(
+                    "x",
+                    "main",
+                    Outcome.UPDATED,
+                    12,
+                    "hard reset to upstream",
+                )
+            )
+
+            self.assertEqual(view.status, "Up to date")
+            self.assertEqual(view.detail, "")
+            self.assertEqual(
+                view.count_text, "hard reset to upstream at last sync"
+            )
 
         def test_row_update_applies_in_place(self) -> None:
             with tempfile.TemporaryDirectory() as tmp:
@@ -463,12 +724,16 @@ if HAVE_PYSIDE:
                 self.assertIs(
                     window.rows_by_label["alpha"].outcome, Outcome.UPDATED
                 )
-                self.assertIn("3 updated", window.row_widgets["alpha"].chip.text())
+                widget = window.row_widgets["alpha"]
+                self.assertEqual(widget.chip.text(), "Up to date")
+                self.assertIn(
+                    "3 commits pulled at last sync", widget.sub_label.text()
+                )
                 widths = {
-                    widget.chip.minimumWidth()
-                    for widget in window.row_widgets.values()
+                    item.chip.minimumWidth()
+                    for item in window.row_widgets.values()
                 }
-                self.assertEqual(widths, {152})
+                self.assertEqual(widths, {132})
                 window.close()
 
         def test_single_repo_sync_keeps_other_status_rows(self) -> None:

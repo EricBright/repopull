@@ -5,6 +5,10 @@
 
 max_depth = 2
 ignore = []
+# Exact relative labels held out of bulk actions. Set from a repository's page
+# in the GUI; an explicit `--only` selection overrides them.
+exclude_from_refresh = []
+exclude_from_sync = []
 fetch_timeout_s = 300
 command_timeout_s = 120
 delay_between_repos_s = 0.5

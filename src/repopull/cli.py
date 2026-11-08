@@ -305,6 +305,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(ref.label)
         return 0
 
+    explicit_selection = bool(patterns)
+    if args.command in ("status", "sync") and not explicit_selection:
+        if args.command == "status":
+            refs = [
+                ref for ref in refs if not config.skips_refresh(ref.label)
+            ]
+        else:
+            refs = [ref for ref in refs if not config.skips_sync(ref.label)]
+        if not refs:
+            what = "status checks" if args.command == "status" else "syncs"
+            print(f"Every repository is excluded from bulk {what}.")
+            return 0
+
     if args.command == "sync" and bool(getattr(args, "behind", False)):
         previous = load_latest_report(config.log_dir)
         if previous is None:

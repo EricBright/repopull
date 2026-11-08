@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.0 — 2026-11-08
+
+- The repository page has **Open folder**, which opens the local clone in the
+  desktop's default file manager through Qt rather than spawning a shell.
+- Two per-repository switches hold a repository out of **Refresh status** and/or
+  **Sync all**. Holds are stored immediately in `config.toml`, apply to automatic
+  checks, the tray, the banner, and CLI/menu bulk runs, and are overridden by an
+  explicit `--only` selection or the page's own sync buttons.
+- Row chips now carry a state or hold only (`Behind`, `Up to date`,
+  `No checks`, `No sync`, `No checks/sync`); counts live in the subtitle so long
+  numbers cannot overflow, and sync counts read as history (`N commits pulled at
+  last sync`).
+- The sidebar shows **Last check** and a clickable **Next check** line that opens
+  the Refresh settings. The next line reports off, paused, hidden, resume, and
+  in-flight states instead of pretending a timer is always running.
+
 ## 0.4.16 — 2026-11-07
 
 - Root-state checks now save the identity they actually verified instead of

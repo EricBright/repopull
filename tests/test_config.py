@@ -19,6 +19,7 @@ from repopull.config import (
     project_home,
     save_behavior_settings,
     save_config,
+    save_repo_holds,
 )
 
 
@@ -80,6 +81,12 @@ class ConfigValidationTests(unittest.TestCase):
             with self.assertRaises(ConfigError):
                 self.load(text)
 
+    def test_exclusions_must_be_lists_of_strings(self) -> None:
+        for key in ("exclude_from_refresh", "exclude_from_sync"):
+            for text in (f'{key} = "x"\n', f"{key} = [1]\n"):
+                with self.assertRaises(ConfigError):
+                    self.load(text)
+
     def test_repopull_config_environment_is_used(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "config.toml"
@@ -94,6 +101,8 @@ class SaveConfigTests(unittest.TestCase):
 
         self.assertEqual(defaults.max_depth, 2)
         self.assertEqual(defaults.ignore, ())
+        self.assertEqual(defaults.exclude_from_refresh, ())
+        self.assertEqual(defaults.exclude_from_sync, ())
         self.assertEqual(defaults.fetch_timeout_s, 300.0)
         self.assertEqual(defaults.command_timeout_s, 120.0)
         self.assertEqual(defaults.delay_between_repos_s, 0.5)
@@ -216,6 +225,8 @@ class SaveConfigTests(unittest.TestCase):
                 auto_refresh_pause_when_hidden=True,
                 update_submodules=False,
                 require_git_lfs_for_lfs_repos=False,
+                exclude_from_refresh=("vendor/one",),
+                exclude_from_sync=("vendor/two", "vendor/one"),
                 config_path=path,
                 config_found=False,
                 root_source="test",
@@ -233,7 +244,16 @@ class SaveConfigTests(unittest.TestCase):
             self.assertAlmostEqual(loaded.delay_between_repos_s, 1.5)
             self.assertFalse(loaded.update_submodules)
             self.assertFalse(loaded.require_git_lfs_for_lfs_repos)
+            self.assertEqual(
+                loaded.exclude_from_refresh, ("vendor/one",)
+            )
+            self.assertEqual(
+                loaded.exclude_from_sync, ("vendor/two", "vendor/one")
+            )
             self.assertTrue(loaded.config_found)
+            self.assertTrue(loaded.skips_refresh("vendor/one"))
+            self.assertFalse(loaded.skips_refresh("vendor/two"))
+            self.assertTrue(loaded.skips_sync("vendor/two"))
 
     def test_save_behavior_updates_compact_keys(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -285,3 +305,28 @@ class SaveConfigTests(unittest.TestCase):
             self.assertEqual(
                 text.count("auto_refresh_pause_when_hidden"), 1
             )
+
+    def test_save_repo_holds_preserves_comments_and_other_keys(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.toml"
+            path.write_text(
+                "# keep this comment\n"
+                'root = "/tmp/repos"\n'
+                "exclude_from_refresh = []\n",
+                encoding="utf-8",
+            )
+
+            save_repo_holds(
+                path,
+                exclude_from_refresh=("alpha", "beta"),
+                exclude_from_sync=("beta",),
+            )
+            text = path.read_text(encoding="utf-8")
+            loaded = load_config(config_path=path)
+
+            self.assertIn("# keep this comment", text)
+            self.assertIn('root = "/tmp/repos"', text)
+            self.assertEqual(loaded.exclude_from_refresh, ("alpha", "beta"))
+            self.assertEqual(loaded.exclude_from_sync, ("beta",))
+            self.assertEqual(text.count("exclude_from_refresh"), 1)
+            self.assertEqual(text.count("exclude_from_sync"), 1)

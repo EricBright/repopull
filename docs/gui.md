@@ -39,15 +39,31 @@ restored; a detail page is restored only if that repository is still present.
 ## What it does
 
 - **Sidebar**: All / Behind / Skipped / Errors with live counts, Settings, a
-  **Watched folder** link that opens Settings and focuses the folder field, the
-  last run time, the running version, and the mark beside the wordmark. The full
-  path lives in Settings and in the link's tooltip.
+  **Watched folder** link that opens Settings and focuses the folder field,
+  **Last check** and **Next check** lines, the running version, and the mark
+  beside the wordmark. The full path lives in Settings and in the link's
+  tooltip. **Last check** is the last completed run (a sync also counts);
+  **Next check** is clickable and opens the Refresh settings section;
+  it shows `off`, `paused`, `when visible`, `after resume`, `after this run`,
+  `none included`, or the scheduled wall-clock time. It is an estimate and does
+  not tick.
 
-- **Library**: one row per repository with its branch, a fixed-width status
-  chip carrying the commit count, and the skip or error reason. **Rows update
-  as each repository is checked**, not only when the whole sweep finishes.
-  Search filters by label.
-- **Banner**: "N repositories can be updated" with a **Sync all** button.
+- **Library**: one row per repository with its branch, a fixed-width state chip,
+  and a subtitle carrying the number or reason. The chip says what is true
+  (`Behind`, `Up to date`, `Skipped`, `Error`) or which bulk action is held
+  (`No checks`, `No sync`, `No checks/sync`); numbers live in the subtitle so
+  long counts cannot overflow the chip. Behind counts use the chip's orange.
+  **Rows update as each repository is checked**, not only when the whole sweep
+  finishes. Search filters by label.
+
+  After a sync that moved commits, the chip is `Up to date` and the subtitle
+  reads `main · 17 commits pulled at last sync`. That is history, not a claim
+  that the remote has not moved since; the next check replaces it. A force sync
+  shows `hard reset to upstream at last sync` instead of a pulled count.
+
+- **Banner**: "N repositories can be updated" with a **Sync these** button.
+  When some behind repositories are held out of Sync all, the banner reads
+  "N can be updated · M held" and the button updates only the N.
 - **Refresh status** fetches and reports without changing any working tree.
 - **Sync all** rechecks every remote, then fast-forwards what is behind. This is
   the correct full sweep: a remote may have moved since the last report.
@@ -55,8 +71,36 @@ restored; a detail page is restored only if that repository is still present.
   repositories the **last check** found behind. Up-to-date repositories are not
   contacted at all. Refresh status first if the last check is old.
 - **Detail page** (click a row): path, branch, upstream, ahead/behind, working
-  tree, Git LFS, submodules, remote URL, and the last result.
+  tree, Git LFS, submodules, remote URL, and the last result. **Open folder**
+  opens the repository in the desktop's default file manager (Dolphin on KDE);
+  it uses the same Qt desktop-open call as the Git LFS help link and does not
+  spawn a shell.
+- **Bulk actions** on the detail page: two switches, off by default, hold the
+  repository out of **Refresh status** and/or **Sync all**. The same holds apply
+  to automatic checks, the tray refresh, **Sync these**, and CLI/menu bulk runs.
+  An explicit **Sync this repo**, **Force sync…**, or CLI `--only` selection
+  ignores the holds because it targets the repository directly.
 - **Force sync…** on the detail page resets one repository after a confirmation.
+
+### Bulk-action holds
+
+The two switches on a repository's page are stored immediately in `config.toml`
+as exact relative labels (`exclude_from_refresh`, `exclude_from_sync`); they are
+not kept in `ui-state.json`, and the CLI reads the same lists.
+
+- **No checks** (excluded from Refresh status) also excludes the repository from
+  automatic checks and the tray refresh. Its saved report row is stale, so it
+  shows no count and is left out of the Behind/Skipped/Errors totals and views.
+- **No sync** (excluded from Sync all) still receives status checks, so its
+  behind count stays fresh and remains in the Behind totals. The banner counts
+  it as held rather than actionable.
+- **No checks/sync** combines both and behaves like No checks for totals.
+- Holds affect only bulk actions. Opening the repository and pressing **Sync this
+  repo** or **Force sync…** still works, as does an explicit `--only` selection
+  in the CLI.
+
+A repository held from checks stays visible under **All** with its gray policy
+chip; after a fresh launch it can show `No checks` even without a stored result.
 
 ### Settings
 
@@ -89,7 +133,8 @@ background.
 **Refresh status automatically** is status-only, off by default, has a 5-minute
 hard floor, and shows an orange warning below 15 minutes. The countdown runs
 from the last completed check; showing the window or changing the interval does
-not restart it. The section and the tray tooltip show the next scheduled check.
+not restart it. The sidebar, Refresh section, and tray tooltip show the next
+scheduled check.
 A manual status or sync resets the next automatic run. On Linux, when automatic
 refresh is on, a wake from suspend is detected and the app waits 60 seconds for
 the desktop and network to settle before running one status check; missed

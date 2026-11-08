@@ -53,6 +53,8 @@ Command-line flags override the file. `--root` overrides `root`.
 | `root` | string | **not configured** | Directory holding the watched repositories. The GUI's Settings page writes it; `--root` overrides it. |
 | `max_depth` | integer ≥ 1 | `2` | How deep to look for `.git`. `1` = direct children, `2` = grandchildren too. |
 | `ignore` | list of strings | `[]` | `fnmatch` globs. A directory is skipped when its relative label (`LEAP 71/PicoGK`) **or** basename (`PicoGK`) matches. |
+| `exclude_from_refresh` | list of strings | `[]` | Exact relative labels held out of **Refresh status**, automatic checks, and the tray refresh. The GUI writes this from a repository's page. |
+| `exclude_from_sync` | list of strings | `[]` | Exact relative labels held out of **Sync all**, **Sync these**, and bulk CLI/menu syncs. An explicit `--only` selection overrides it. |
 | `fetch_timeout_s` | number ≥ 0 | `300` | Seconds before a `git fetch` is abandoned. Network-level failures are collected and can stop the sweep. |
 | `command_timeout_s` | number ≥ 0 | `120` | Seconds before any other git command is abandoned. |
 | `delay_between_repos_s` | number ≥ 0 | `0.5` | Pause between consecutive fetches. |
@@ -66,6 +68,29 @@ Command-line flags override the file. `--root` overrides `root`.
 
 Unknown keys are reported on stderr and ignored, so a newer config does not break
 an older checkout.
+
+## Per-repository holds
+
+`exclude_from_refresh` and `exclude_from_sync` hold visible repositories out of
+bulk actions without hiding them from discovery. This is different from
+`ignore`: an ignored repository is not shown at all.
+
+The GUI's repository page writes both lists immediately, so a toggle takes
+effect on the next run without pressing **Save unsaved settings**. They are
+exact relative labels, matched against the same label shown in the library
+(`vendor/tool`, not just `tool`). Renaming or moving a repository leaves a stale
+label in the list; the rule then simply stops matching. Labels are not pruned
+automatically because a temporarily unmounted disk must not lose its holds.
+
+Bulk `status` and `sync` obey the lists. An explicit `--only` selection (and the
+GUI's per-repository buttons) overrides them, because it names the repository
+directly. `repopull list` still shows every discovered repository.
+
+A repository excluded from refresh has a stale report row, so the GUI hides its
+count and leaves it out of the Behind/Skipped/Errors totals. One excluded only
+from sync is still checked, so its behind count stays live and appears in both
+the count and the banner's held total. See
+[gui.md](gui.md#bulk-action-holds).
 
 ## Log retention
 
@@ -167,6 +192,9 @@ label and the basename:
 ./bin/repopull sync --only AppGlider --only fieldcraft
 ```
 
+Bulk `status` and `sync` omit repositories held by `exclude_from_refresh` or
+`exclude_from_sync`. An explicit `--only` match overrides the hold.
+
 ## Exit codes
 
 | Code | Meaning |
@@ -180,6 +208,9 @@ label and the basename:
 ```toml
 # Skip a corpus you never read.
 ignore = ["photocraft-corpus"]
+
+# Keep a visible repo out of bulk syncs but still check it.
+exclude_from_sync = ["vendor/big"]
 
 # Be extra gentle on a shared connection.
 delay_between_repos_s = 2.0

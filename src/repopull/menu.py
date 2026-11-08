@@ -172,9 +172,27 @@ def run_menu(config: Config) -> int:
         if choice in ("6", "q", "quit"):
             return 0
         if choice == "1":
-            _show(status_report(refs, config, progress=_progress), color=color)
+            selected = [
+                ref for ref in refs if not config.skips_refresh(ref.label)
+            ]
+            if not selected:
+                print("  ! Every repository is excluded from status checks.")
+            else:
+                _show(
+                    status_report(selected, config, progress=_progress),
+                    color=color,
+                )
         elif choice == "2":
-            _show(sync_report(refs, config, progress=_progress), color=color)
+            selected = [
+                ref for ref in refs if not config.skips_sync(ref.label)
+            ]
+            if not selected:
+                print("  ! Every repository is excluded from syncs.")
+            else:
+                _show(
+                    sync_report(selected, config, progress=_progress),
+                    color=color,
+                )
         elif choice == "3":
             selected = _choose(
                 refs,

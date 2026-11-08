@@ -18,11 +18,13 @@ from PySide6.QtCore import (
     Qt,
     QThreadPool,
     QTimer,
+    QUrl,
     Signal,
 )
 from PySide6.QtGui import (
     QAction,
     QCloseEvent,
+    QDesktopServices,
     QHideEvent,
     QIcon,
     QPixmap,
@@ -64,6 +66,7 @@ from repopull.config import (
     load_config,
     save_behavior_settings,
     save_config,
+    save_repo_holds,
 )
 from repopull.discovery import DiscoveryError, discover_repos
 from repopull.diagnostics import LfsStatus, lfs_status
@@ -199,6 +202,7 @@ class MainWindow(QMainWindow):
         self.task: RunTask | None = None
         self._quit_requested = False
         self._loading_settings = False
+        self._loading_holds = False
         self._settings_section = 0
         self._settings_dirty = False
         self._lfs_status: LfsStatus | None = None
@@ -360,9 +364,21 @@ class MainWindow(QMainWindow):
         self.watched_link.clicked.connect(self._open_watched_settings)
         box.addWidget(self.watched_link)
 
-        self.last_label = QLabel("Last run —")
+        self.last_label = QLabel("Last check —")
         self.last_label.setObjectName("Faint")
+        self.last_label.setToolTip(
+            "The last completed run; a sync also counts as a check."
+        )
         box.addWidget(self.last_label)
+
+        self.next_label = QPushButton("Next check —")
+        self.next_label.setObjectName("FaintLink")
+        self.next_label.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.next_label.setToolTip(
+            "Open the Refresh settings to change automatic checks."
+        )
+        self.next_label.clicked.connect(self._open_refresh_settings)
+        box.addWidget(self.next_label)
 
         version = QLabel(f"v{__version__}")
         version.setObjectName("Faint")
@@ -521,8 +537,49 @@ class MainWindow(QMainWindow):
             grid.addWidget(label, index, 0)
             grid.addWidget(value, index, 1)
             self.detail_fields[key] = value
+            if key == "path":
+                self.detail_open = QPushButton("Open folder")
+                self.detail_open.setObjectName("Link")
+                self.detail_open.setToolTip(
+                    "Open this repository in your default file manager."
+                )
+                self.detail_open.clicked.connect(self._open_folder_current)
+                grid.addWidget(self.detail_open, index, 2)
         grid.setColumnStretch(1, 1)
         layout.addWidget(card)
+
+        holds = SettingsCard("Bulk actions")
+        self.detail_exclude_refresh = Switch()
+        self.detail_exclude_refresh.setAccessibleName(
+            "Exclude from Refresh status"
+        )
+        self.detail_exclude_refresh.toggled.connect(self._on_hold_toggled)
+        holds.add(
+            SettingRow(
+                "Exclude from Refresh status",
+                "Skip this repository when Refresh status or automatic "
+                "checks run.",
+                self.detail_exclude_refresh,
+            )
+        )
+        self.detail_exclude_sync = Switch()
+        self.detail_exclude_sync.setAccessibleName("Exclude from Sync all")
+        self.detail_exclude_sync.toggled.connect(self._on_hold_toggled)
+        holds.add(
+            SettingRow(
+                "Exclude from Sync all",
+                "Skip this repository during Sync all and Sync these.",
+                self.detail_exclude_sync,
+            )
+        )
+        holds_note = QLabel(
+            "These switches only affect bulk actions. Sync this repo and "
+            "Force sync… on this page always work."
+        )
+        holds_note.setObjectName("SettingHint")
+        holds_note.setWordWrap(True)
+        holds.add_note(holds_note)
+        layout.addWidget(holds)
 
         self.detail_note = QLabel("")
         self.detail_note.setObjectName("Muted")
@@ -1296,6 +1353,11 @@ class MainWindow(QMainWindow):
         visible: list[RowView] = []
         for ref in self.refs:
             row = report_rows.get(ref.label)
+            no_checks = self.config.skips_refresh(ref.label)
+            no_sync = self.config.skips_sync(ref.label)
+            if no_checks and self.filter != "all":
+                # A stale report row must not appear under Behind/Errors.
+                continue
             if self.filter == "behind" and (
                 row is None or row.outcome is not Outcome.BEHIND
             ):
@@ -1311,7 +1373,11 @@ class MainWindow(QMainWindow):
             if self.search and self.search.casefold() not in ref.label.casefold():
                 continue
             visible.append(
-                row_view(row) if row is not None else unchecked_view(ref.label)
+                row_view(row, no_checks=no_checks, no_sync=no_sync)
+                if row is not None
+                else unchecked_view(
+                    ref.label, no_checks=no_checks, no_sync=no_sync
+                )
             )
         return visible
 
@@ -1356,6 +1422,9 @@ class MainWindow(QMainWindow):
         report_rows = self._report_rows()
         counts = {Outcome.BEHIND: 0, Outcome.SKIPPED: 0, Outcome.ERROR: 0}
         for ref in self.refs:
+            if self.config.skips_refresh(ref.label):
+                # Its saved outcome is stale; keep it out of live totals.
+                continue
             row = report_rows.get(ref.label)
             if row is not None and row.outcome in counts:
                 counts[row.outcome] += 1
@@ -1367,18 +1436,47 @@ class MainWindow(QMainWindow):
         self.nav_buttons["errors"].setText(f"Errors  {counts[Outcome.ERROR]}")
 
     def _update_banner(self) -> None:
-        behind = 0
+        actionable = 0
+        held = 0
         if self.report is not None:
-            labels = {ref.label for ref in self.refs}
-            behind = sum(
-                1
+            labels = {
+                ref.label
+                for ref in self.refs
+                if not self.config.skips_refresh(ref.label)
+            }
+            behind_rows = [
+                row
                 for row in self.report.rows
                 if row.outcome is Outcome.BEHIND and row.label in labels
+            ]
+            actionable = sum(
+                1
+                for row in behind_rows
+                if not self.config.skips_sync(row.label)
             )
-        if behind:
+            held = len(behind_rows) - actionable
+        if actionable:
+            noun = "repository" if actionable == 1 else "repositories"
+            text = (
+                f"{actionable} {noun} can be updated "
+                "(from the last check)."
+            )
+            if held:
+                text = (
+                    f"{actionable} {noun} can be updated · "
+                    f"{held} held (from the last check)."
+                )
+            self.banner_label.setText(text)
+            self.banner_button.show()
+            self.banner.show()
+        elif held:
+            noun = "repository" if held == 1 else "repositories"
+            verb = "is" if held == 1 else "are"
             self.banner_label.setText(
-                f"{behind} repositories can be updated (from the last check)."
+                f"{held} {noun} {verb} held from Sync all "
+                "(from the last check)."
             )
+            self.banner_button.hide()
             self.banner.show()
         else:
             self.banner.hide()
@@ -1392,10 +1490,11 @@ class MainWindow(QMainWindow):
             self.watched_link.setToolTip(str(self.config.root))
         if self.report is not None:
             self.last_label.setText(
-                f"Last run {self.report.started_at:%Y-%m-%d %H:%M}"
+                f"Last check {self.report.started_at:%Y-%m-%d %H:%M}"
             )
         else:
-            self.last_label.setText("Last run —")
+            self.last_label.setText("Last check —")
+        self._update_next_check_label()
 
     def _populate_settings(self) -> None:
         self._loading_settings = True
@@ -1520,6 +1619,7 @@ class MainWindow(QMainWindow):
         self.current_label = label
         self.detail_title.setText(label)
         self.detail_sub.setText(str(ref.path))
+        self._populate_detail_holds(label)
         self.detail_fields["path"].setText(str(ref.path))
         self.detail_fields["branch"].setText(state.branch or "detached")
         self.detail_fields["upstream"].setText(state.upstream or "none")
@@ -1554,6 +1654,69 @@ class MainWindow(QMainWindow):
     def _lfs_help_current(self) -> None:
         ref = self._current_ref()
         self._show_lfs_help(ref.path if ref is not None else None)
+
+    def _open_folder_current(self) -> None:
+        ref = self._current_ref()
+        if ref is None:
+            return
+        if not ref.path.is_dir():
+            self._flash(f"Folder not found: {ref.path}")
+            return
+        if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(ref.path))):
+            self._flash(f"Could not open folder: {ref.path}")
+
+    def _populate_detail_holds(self, label: str) -> None:
+        self._loading_holds = True
+        self.detail_exclude_refresh.setChecked(
+            self.config.skips_refresh(label)
+        )
+        self.detail_exclude_sync.setChecked(self.config.skips_sync(label))
+        self._loading_holds = False
+
+    def _on_hold_toggled(self, _checked: bool) -> None:
+        if self._loading_holds or self.current_label is None:
+            return
+        label = self.current_label
+        previous = self.config
+        exclude_refresh = set(previous.exclude_from_refresh)
+        exclude_sync = set(previous.exclude_from_sync)
+        if self.detail_exclude_refresh.isChecked():
+            exclude_refresh.add(label)
+        else:
+            exclude_refresh.discard(label)
+        if self.detail_exclude_sync.isChecked():
+            exclude_sync.add(label)
+        else:
+            exclude_sync.discard(label)
+        updated = dataclasses.replace(
+            previous,
+            exclude_from_refresh=tuple(sorted(exclude_refresh)),
+            exclude_from_sync=tuple(sorted(exclude_sync)),
+        )
+        target = updated.config_path
+        if target is None:
+            self.config = previous
+            self._populate_detail_holds(label)
+            self._flash("No config file is available to save this exclusion.")
+            return
+        self.config = updated
+        try:
+            save_repo_holds(
+                target,
+                exclude_from_refresh=updated.exclude_from_refresh,
+                exclude_from_sync=updated.exclude_from_sync,
+            )
+        except OSError as exc:
+            self.config = previous
+            self._populate_detail_holds(label)
+            self._flash(f"Could not save the exclusion: {exc}")
+            return
+        self._render_library()
+        self._flash(f"Saved bulk-action exclusions for {label}.")
+
+    def _open_refresh_settings(self) -> None:
+        self._show_settings()
+        self._select_settings_section(1)
 
     def _show_lfs_help(self, repo: Path | None = None) -> None:
         dialog = LfsHelpDialog(lfs_status(repo), self)
@@ -1682,6 +1845,8 @@ class MainWindow(QMainWindow):
     def _auto_next_text(self) -> str:
         if self.config.auto_refresh_s <= 0:
             return "Automatic refresh is off."
+        if not self._status_refs() and self.refs:
+            return "No repositories are included in automatic checks."
         if self._auto_paused:
             return "Automatic refresh is paused."
         if (
@@ -1707,10 +1872,41 @@ class MainWindow(QMainWindow):
             f"{self._clock_label(remaining / 1_000)}."
         )
 
+    def _next_check_text(self) -> str:
+        """A compact sidebar form of the next automatic status check."""
+        if self.config.auto_refresh_s <= 0:
+            return "Next check — off"
+        if not self._status_refs() and self.refs:
+            return "Next check — none included"
+        if self._auto_paused:
+            return "Next check — paused"
+        if (
+            self.config.auto_refresh_pause_when_hidden
+            and not self._auto_visible_allowed()
+        ):
+            return "Next check — when visible"
+        if self._resume_pending:
+            return "Next check — after resume"
+        if self.task is not None:
+            return "Next check — after this run"
+        remaining = self.auto_timer.remainingTime()
+        if remaining < 0:
+            return "Next check —"
+        target = time.localtime(time.time() + remaining / 1_000)
+        return f"Next check {time.strftime('%Y-%m-%d %H:%M', target)}"
+
+    def _update_next_check_label(self) -> None:
+        label = getattr(self, "next_label", None)
+        if label is None:
+            return
+        label.setText(self._next_check_text())
+        label.setToolTip(self._auto_next_text())
+
     def _update_auto_feedback(self) -> None:
         label = getattr(self, "settings_auto_next", None)
         if label is not None:
             label.setText(self._auto_next_text())
+        self._update_next_check_label()
 
     def _update_auto_controls(self) -> None:
         self.settings_auto_minutes.setEnabled(True)
@@ -1861,16 +2057,42 @@ class MainWindow(QMainWindow):
 
     # -------------------------------------------------------------- run control
 
+    def _status_refs(self) -> list[RepoRef]:
+        """Repositories included in Refresh status and automatic checks."""
+        return [
+            ref
+            for ref in self.refs
+            if not self.config.skips_refresh(ref.label)
+        ]
+
+    def _sync_refs(self) -> list[RepoRef]:
+        """Repositories included in Sync all."""
+        return [
+            ref for ref in self.refs if not self.config.skips_sync(ref.label)
+        ]
+
     def _refresh_status(self) -> None:
-        self._start_run(self.refs, force=False, mode="status")
+        refs = self._status_refs()
+        if not refs:
+            self._flash("Every repository is excluded from Refresh status.")
+            return
+        self._start_run(refs, force=False, mode="status")
 
     def _sync_all(self) -> None:
-        self._start_run(self.refs, force=False, mode="sync")
+        refs = self._sync_refs()
+        if not refs:
+            self._flash("Every repository is excluded from Sync all.")
+            return
+        self._start_run(refs, force=False, mode="sync")
 
     def _behind_refs(self) -> list[RepoRef]:
-        """Repositories the last check found behind."""
+        """Repositories the last check found behind and bulk sync may update."""
         selected: list[RepoRef] = []
         for ref in self.refs:
+            if self.config.skips_refresh(ref.label):
+                continue
+            if self.config.skips_sync(ref.label):
+                continue
             row = self.rows_by_label.get(ref.label)
             if row is not None and row.outcome is Outcome.BEHIND:
                 selected.append(ref)
@@ -2077,7 +2299,11 @@ class MainWindow(QMainWindow):
             self._update_auto_feedback()
             return
         self.auto_timer.stop()
-        self._start_run(self.refs, force=False, mode="status", auto=True)
+        refs = self._status_refs()
+        if not refs:
+            self._schedule_auto_refresh()
+            return
+        self._start_run(refs, force=False, mode="status", auto=True)
         self._update_auto_feedback()
 
     def _resume_after_visible(self) -> None:
@@ -2176,16 +2402,17 @@ class MainWindow(QMainWindow):
             return
         if self.task is not None:
             return
-        if not self.refs:
+        refs = self._status_refs()
+        if not refs:
             self._schedule_auto_refresh()
             return
-        self._start_run(self.refs, force=False, mode="status", auto=True)
+        self._start_run(refs, force=False, mode="status", auto=True)
 
     def _update_tray_tooltip(self) -> None:
         if self.tray is None:
             return
         if self.report is None:
-            text = "repopull — no run yet"
+            text = "repopull — no check yet"
         else:
             text = f"repopull — {self._summary(self.report)}"
         if self.config.auto_refresh_s > 0:
@@ -2272,6 +2499,8 @@ class MainWindow(QMainWindow):
             self.banner_button,
             self.detail_sync,
             self.detail_force,
+            self.detail_exclude_refresh,
+            self.detail_exclude_sync,
             self.save_button,
             self.reset_button,
         ):

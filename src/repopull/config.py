@@ -20,6 +20,8 @@ _KNOWN_KEYS: Final[frozenset[str]] = frozenset(
         "root",
         "max_depth",
         "ignore",
+        "exclude_from_refresh",
+        "exclude_from_sync",
         "fetch_timeout_s",
         "command_timeout_s",
         "delay_between_repos_s",
@@ -58,6 +60,8 @@ class Config:
     root: Path | None = DEFAULT_ROOT
     max_depth: int = 2
     ignore: tuple[str, ...] = ()
+    exclude_from_refresh: tuple[str, ...] = ()
+    exclude_from_sync: tuple[str, ...] = ()
     fetch_timeout_s: float = 300.0
     command_timeout_s: float = 120.0
     delay_between_repos_s: float = 0.5
@@ -72,6 +76,14 @@ class Config:
     config_path: Path | None = None
     config_found: bool = False
     root_source: str = "not configured"
+
+    def skips_refresh(self, label: str) -> bool:
+        """True when this repository is excluded from Refresh status."""
+        return label in self.exclude_from_refresh
+
+    def skips_sync(self, label: str) -> bool:
+        """True when this repository is excluded from Sync all."""
+        return label in self.exclude_from_sync
 
 
 def _config_path_from_env() -> Path | None:
@@ -100,6 +112,14 @@ def _as_int(value: Any, key: str) -> int:
             raise ConfigError(f"{key} must be at least 1")
         return value
     raise ConfigError(f"{key} must be an integer")
+
+
+def _as_string_tuple(value: Any, key: str) -> tuple[str, ...]:
+    if not isinstance(value, list) or not all(
+        isinstance(item, str) for item in value
+    ):
+        raise ConfigError(f"{key} must be a list of strings")
+    return tuple(value)
 
 
 def _as_non_negative_int(value: Any, key: str) -> int:
@@ -172,17 +192,21 @@ def load_config(
             file=sys.stderr,
         )
 
-    raw_ignore = data.get("ignore", [])
-    if not isinstance(raw_ignore, list) or not all(
-        isinstance(item, str) for item in raw_ignore
-    ):
-        raise ConfigError("ignore must be a list of strings")
+    raw_ignore = _as_string_tuple(data.get("ignore", []), "ignore")
+    exclude_from_refresh = _as_string_tuple(
+        data.get("exclude_from_refresh", []), "exclude_from_refresh"
+    )
+    exclude_from_sync = _as_string_tuple(
+        data.get("exclude_from_sync", []), "exclude_from_sync"
+    )
 
     try:
         return Config(
             root=root,
             max_depth=_as_int(data.get("max_depth", 2), "max_depth"),
-            ignore=tuple(raw_ignore),
+            ignore=raw_ignore,
+            exclude_from_refresh=exclude_from_refresh,
+            exclude_from_sync=exclude_from_sync,
             fetch_timeout_s=_as_float(
                 data.get("fetch_timeout_s", 300.0), "fetch_timeout_s"
             ),
@@ -248,6 +272,11 @@ def _write_config_atomic(path: Path, text: str) -> None:
         os.close(directory)
 
 
+def _toml_list(items: tuple[str, ...]) -> str:
+    """Render a list of strings as a one-line TOML array."""
+    return "[" + ", ".join(json.dumps(item) for item in items) + "]"
+
+
 def save_config(config: Config, path: Path) -> None:
     """Write the known keys to `path` atomically, with a short header.
 
@@ -265,9 +294,11 @@ def save_config(config: Config, path: Path) -> None:
     lines.extend(
         [
             f"max_depth = {config.max_depth}",
-            "ignore = ["
-            + ", ".join(json.dumps(item) for item in config.ignore)
-            + "]",
+            f"ignore = {_toml_list(config.ignore)}",
+            "exclude_from_refresh = "
+            f"{_toml_list(config.exclude_from_refresh)}",
+            "exclude_from_sync = "
+            f"{_toml_list(config.exclude_from_sync)}",
             f"fetch_timeout_s = {config.fetch_timeout_s:g}",
             f"command_timeout_s = {config.command_timeout_s:g}",
             f"delay_between_repos_s = {config.delay_between_repos_s:g}",
@@ -286,6 +317,28 @@ def save_config(config: Config, path: Path) -> None:
     _write_config_atomic(path, "\n".join(lines))
 
 
+def _update_config_keys(path: Path, updates: dict[str, str]) -> None:
+    """Replace or append scalar keys without disturbing the rest of the file."""
+    lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
+    found: set[str] = set()
+    for index, line in enumerate(lines):
+        stripped = line.lstrip()
+        for key, value in updates.items():
+            if (
+                stripped == key
+                or stripped.startswith(key + " ")
+                or stripped.startswith(key + "=")
+            ):
+                indent = line[: len(line) - len(stripped)]
+                lines[index] = f"{indent}{key} = {value}"
+                found.add(key)
+    for key, value in updates.items():
+        if key not in found:
+            lines.append(f"{key} = {value}")
+
+    _write_config_atomic(path, "\n".join(lines) + "\n")
+
+
 def save_behavior_settings(
     path: Path,
     *,
@@ -298,26 +351,34 @@ def save_behavior_settings(
     This is for the checkboxes that must take effect immediately; the full
     `save_config` rewrite remains behind the Save button.
     """
-    updates = {
-        "background_mode": str(background_mode).lower(),
-        "auto_refresh_s": str(auto_refresh_s),
-        "auto_refresh_pause_when_hidden": str(
-            auto_refresh_pause_when_hidden
-        ).lower(),
-    }
-    lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
-    found: set[str] = set()
-    for index, line in enumerate(lines):
-        stripped = line.lstrip()
-        for key, value in updates.items():
-            if stripped == key or stripped.startswith(key + " ") or stripped.startswith(
-                key + "="
-            ):
-                indent = line[: len(line) - len(stripped)]
-                lines[index] = f"{indent}{key} = {value}"
-                found.add(key)
-    for key, value in updates.items():
-        if key not in found:
-            lines.append(f"{key} = {value}")
+    _update_config_keys(
+        path,
+        {
+            "background_mode": str(background_mode).lower(),
+            "auto_refresh_s": str(auto_refresh_s),
+            "auto_refresh_pause_when_hidden": str(
+                auto_refresh_pause_when_hidden
+            ).lower(),
+        },
+    )
 
-    _write_config_atomic(path, "\n".join(lines) + "\n")
+
+def save_repo_holds(
+    path: Path,
+    *,
+    exclude_from_refresh: tuple[str, ...],
+    exclude_from_sync: tuple[str, ...],
+) -> None:
+    """Update the per-repository bulk-action exclusions immediately.
+
+    Like `save_behavior_settings`, this preserves comments and unrelated keys.
+    The lists hold relative labels, so they survive GUI restarts but not a
+    repository rename.
+    """
+    _update_config_keys(
+        path,
+        {
+            "exclude_from_refresh": _toml_list(exclude_from_refresh),
+            "exclude_from_sync": _toml_list(exclude_from_sync),
+        },
+    )

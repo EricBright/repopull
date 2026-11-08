@@ -8,7 +8,7 @@ between discovery, git access, decision-making, and presentation.
 | Module | Responsibility |
 |---|---|
 | `models.py` | Frozen dataclasses: `RepoRef`, `RepoState`, `Row`, `Report`, `Outcome`. |
-| `config.py` | TOML loading, validation, defaults, path resolution. |
+| `config.py` | TOML loading, validation, defaults, path resolution, and per-repository bulk-action holds. |
 | `discovery.py` | Finds `.git` directories at depth 1–2, applies ignore globs. |
 | `git.py` | Typed wrappers around the git CLI; the only place that spawns processes. |
 | `sync.py` | Inspection, fetching, classification, and applying updates. |
