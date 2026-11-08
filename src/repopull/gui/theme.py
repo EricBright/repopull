@@ -217,6 +217,9 @@ def stylesheet(palette: Palette = PALETTE) -> str:
         background: {p.surface2};
         color: {p.text};
         border-left: 3px solid {p.accent};
+        /* The accent bar occupies 3 px, so reclaim it from the left padding
+           to keep the text on the same column as unchecked tabs. */
+        padding-left: 9px;
     }}
     QLineEdit {{
         background: {p.surface2};

@@ -358,18 +358,25 @@ class MainWindow(QMainWindow):
 
         box.addSpacing(10)
 
+        meta = QWidget()
+        meta_layout = QVBoxLayout(meta)
+        # Match QPushButton#Nav's horizontal padding so every sidebar text
+        # starts on the same column (the pill backgrounds keep their inset).
+        meta_layout.setContentsMargins(12, 0, 0, 0)
+        meta_layout.setSpacing(6)
+
         self.watched_link = QPushButton("Watched folder")
         self.watched_link.setObjectName("Link")
         self.watched_link.setCursor(Qt.CursorShape.PointingHandCursor)
         self.watched_link.clicked.connect(self._open_watched_settings)
-        box.addWidget(self.watched_link)
+        meta_layout.addWidget(self.watched_link)
 
         self.last_label = QLabel("Last check —")
         self.last_label.setObjectName("Faint")
         self.last_label.setToolTip(
             "The last completed run; a sync also counts as a check."
         )
-        box.addWidget(self.last_label)
+        meta_layout.addWidget(self.last_label)
 
         self.next_label = QPushButton("Next check —")
         self.next_label.setObjectName("FaintLink")
@@ -378,11 +385,13 @@ class MainWindow(QMainWindow):
             "Open the Refresh settings to change automatic checks."
         )
         self.next_label.clicked.connect(self._open_refresh_settings)
-        box.addWidget(self.next_label)
+        meta_layout.addWidget(self.next_label)
 
         version = QLabel(f"v{__version__}")
         version.setObjectName("Faint")
-        box.addWidget(version)
+        meta_layout.addWidget(version)
+
+        box.addWidget(meta)
 
         self.nav_buttons["all"].setChecked(True)
         return sidebar
@@ -1115,7 +1124,7 @@ class MainWindow(QMainWindow):
         self.filter = key
         self.nav_buttons[key].setChecked(True)
         self.stack.setCurrentWidget(self.library_page)
-        self._render_library()
+        self._render_library(preserve_scroll=False)
         self._save_ui_state()
 
     def _settings_section_toggled(self, index: int, checked: bool) -> None:
@@ -1158,7 +1167,7 @@ class MainWindow(QMainWindow):
 
     def _on_search(self, text: str) -> None:
         self.search = text.strip()
-        self._render_library()
+        self._render_library(preserve_scroll=False)
 
     # --------------------------------------------------------------- rendering
 
@@ -1385,9 +1394,17 @@ class MainWindow(QMainWindow):
         """Number of rows the current filter and search would show."""
         return len(self._visible_rows())
 
-    def _render_library(self) -> None:
+    def _render_library(self, *, preserve_scroll: bool = True) -> None:
+        """Rebuild the list, keeping the scroll position for data updates.
+
+        Filter and search changes pass `preserve_scroll=False` because a new
+        view should start at the top. A run finishing or a hold changing while
+        the detail page is open must not destroy the position the user had.
+        """
         self._update_nav_counts()
         visible = self._visible_rows()
+        bar = self.list.verticalScrollBar()
+        previous_scroll = bar.value() if preserve_scroll else 0
 
         self.list.clear()
         self.row_widgets = {}
@@ -1417,6 +1434,10 @@ class MainWindow(QMainWindow):
             )
 
         self._update_banner()
+        if preserve_scroll:
+            bar.setValue(min(previous_scroll, bar.maximum()))
+        else:
+            bar.setValue(0)
 
     def _update_nav_counts(self) -> None:
         report_rows = self._report_rows()

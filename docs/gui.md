@@ -41,8 +41,9 @@ restored; a detail page is restored only if that repository is still present.
 - **Sidebar**: All / Behind / Skipped / Errors with live counts, Settings, a
   **Watched folder** link that opens Settings and focuses the folder field,
   **Last check** and **Next check** lines, the running version, and the mark
-  beside the wordmark. The full path lives in Settings and in the link's
-  tooltip. **Last check** is the last completed run (a sync also counts);
+  beside the wordmark. All of this text shares one column with the navigation
+  labels; the pills keep their inset. The full path lives in Settings and in the
+  link's tooltip. **Last check** is the last completed run (a sync also counts);
   **Next check** is clickable and opens the Refresh settings section;
   it shows `off`, `paused`, `when visible`, `after resume`, `after this run`,
   `none included`, or the scheduled wall-clock time. It is an estimate and does
@@ -54,7 +55,8 @@ restored; a detail page is restored only if that repository is still present.
   (`No checks`, `No sync`, `No checks/sync`); numbers live in the subtitle so
   long counts cannot overflow the chip. Behind counts use the chip's orange.
   **Rows update as each repository is checked**, not only when the whole sweep
-  finishes. Search filters by label.
+  finishes. Search filters by label. Returning from a detail page keeps the
+  list's scroll position; changing the filter or search starts at the top.
 
   After a sync that moved commits, the chip is `Up to date` and the subtitle
   reads `main · 17 commits pulled at last sync`. That is history, not a claim

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.1 — 2026-11-08
+
+- Returning from a repository's detail page keeps the library's scroll
+  position. A status run finishing or a hold changing while the detail page is
+  open no longer jumps the list back to the top. Changing the filter or the
+  search still starts at the top.
+- Sidebar text now shares one column: Watched folder, Last check, Next check,
+  and the version align with All / Behind / Skipped / Errors and Settings. The
+  navigation pills keep their 12 px inset, and the checked tab's accent bar no
+  longer shifts its label by 3 px.
+
 ## 0.5.0 — 2026-11-08
 
 - The repository page has **Open folder**, which opens the local clone in the

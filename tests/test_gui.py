@@ -63,6 +63,12 @@ if HAVE_PYSIDE:
                 (root / name / ".git").mkdir(parents=True)
             return root
 
+        def _many(self, base: Path, count: int = 40) -> Path:
+            root = base / "repos"
+            for index in range(count):
+                (root / f"repo-{index:02d}" / ".git").mkdir(parents=True)
+            return root
+
         def test_unconfigured_root_shows_setup_message(self) -> None:
             with tempfile.TemporaryDirectory() as tmp:
                 base = Path(tmp)
@@ -600,6 +606,50 @@ if HAVE_PYSIDE:
                 base = Path(tmp)
                 window = MainWindow(self._config(base, self._tree(base)))
                 self.assertEqual(window.visible_row_count(), 3)
+                window.close()
+
+        def test_library_scroll_survives_rebuild_and_back(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                window = MainWindow(self._config(base, self._many(base)))
+                window.resize(1040, 720)
+                window.show()
+                self.app.processEvents()
+                bar = window.list.verticalScrollBar()
+                self.assertGreater(bar.maximum(), 500)
+
+                bar.setValue(500)
+                window._render_library()
+                self.assertEqual(bar.value(), 500)
+
+                window._open_detail("repo-20")
+                window._render_library()
+                window._back_to_library()
+                self.app.processEvents()
+                self.assertEqual(bar.value(), 500)
+
+                window.refs = window.refs[:3]
+                window._render_library()
+                self.assertLessEqual(bar.value(), bar.maximum())
+                window.close()
+
+        def test_filter_and_search_reset_library_scroll(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                window = MainWindow(self._config(base, self._many(base)))
+                window.resize(1040, 720)
+                window.show()
+                self.app.processEvents()
+                bar = window.list.verticalScrollBar()
+
+                bar.setValue(500)
+                window._set_filter("behind")
+                self.assertEqual(bar.value(), 0)
+
+                window._set_filter("all")
+                bar.setValue(500)
+                window._on_search("repo-2")
+                self.assertEqual(bar.value(), 0)
                 window.close()
 
         def test_report_is_loaded_and_filtered(self) -> None:
