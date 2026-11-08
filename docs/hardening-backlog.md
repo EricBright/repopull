@@ -3,6 +3,12 @@
 Recorded 2026-11-07 after the 0.4.16 release. This is a proposal and reference,
 not shipped functionality.
 
+**Status 2026-11-08 (0.5.1):** the current release is 0.5.1. No item below has
+started; the backlog and known gaps are unchanged. A fresh session should begin
+with action 1 (resource soak) or action 2 (process-tree termination). The
+`v0.5.1` git tag marks the release; this handoff note is a follow-up commit, and
+there is no `v*/` snapshot.
+
 ## Language decision: Python first; no Rust wrappers
 
 **Conclusion:** keep the orchestration, state handling, and GUI in Python. Do not
@@ -67,7 +73,7 @@ Rust rewrite without evidence that it fixes a specific observed failure class.
    resource/lifecycle regressions and the packaging update policy is written
    down.
 
-## Existing strengths at 0.4.16
+## Existing strengths (audited at 0.4.16)
 
 - `git.py`: timeouts, `start_new_session=True`, process-group SIGTERM/SIGKILL,
   scrubbed `GIT_*` environment, disabled hooks/fsmonitor, and
