@@ -257,6 +257,7 @@ auto_refresh_pause_when_hidden = false
 make test        # unit and integration tests, offline, uses temp repos
 make typecheck   # mypy --strict
 make check       # both
+make audit       # check packaging pins against known advisories
 make soak        # CLI resource soak against throwaway local repos
 make soak-qt     # Qt window create/close soak
 make gui         # launch the optional PySide6 interface

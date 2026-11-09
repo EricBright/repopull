@@ -3,7 +3,7 @@
 Recorded 2026-11-07 after the 0.4.16 release. This is a proposal and reference;
 `tools/soak.py` and the process-tree tests are the first implemented pieces.
 
-**Status 2026-11-09 (0.5.1, public):** actions 1–4 are done. Action 1 is
+**Status 2026-11-09 (0.5.1, public):** all five actions are done. Action 1 is
 `tools/soak.py`, which measures repeated discovery/status cycles (`make soak`)
 and Qt window create/close cycles (`make soak-qt`), reporting RSS, file
 descriptors, threads, and tracemalloc.
@@ -32,6 +32,11 @@ mounted identity before writing, so a stale confirmation cannot overwrite a
 newer observation; concurrent state writers are atomic last-writer-wins; a
 cancellation during fetch leaves the worktree unchanged; the existing
 check/save identity test covers a remount between scan and write.
+
+Action 5 adds CI guardrails. `make test` runs under `-X dev -X faulthandler
+-W error`; CI audits both packaging requirement files with `pip-audit`; the
+update and pin policy is in [packaging.md](packaging.md#updates-and-dependency-checks).
+The Rust decision remains gated and no Rust is built.
 
 ## Language decision: Python first; no Rust wrappers
 
@@ -108,7 +113,9 @@ Rust rewrite without evidence that it fixes a specific observed failure class.
    with `-X dev -W error` and `faulthandler`; add dependency/security checks for
    the packaging environment; keep Python/PySide6 updated. Done when CI catches
    resource/lifecycle regressions and the packaging update policy is written
-   down.
+   down. **Done 2026-11-09:** tests run in dev mode with warnings as errors and
+   faulthandler; CI runs `pip-audit` on both requirement files; the update
+   policy is in packaging.md; no Rust is built.
 
 ## Existing strengths (audited at 0.4.16)
 
@@ -126,5 +133,8 @@ Rust rewrite without evidence that it fixes a specific observed failure class.
   kills `git`, not necessarily its descendants. Accepted and covered by an
   expected-failure test.
 - `list`/GUI state writes are atomic but not all serialized by the run lock.
+- GUI tests leave one uncollectable PySide6 `Property` object at interpreter
+  shutdown under `-X dev`. Windows and tasks themselves are collectable; this
+  is a Qt wrapper/descriptor cycle, not a retained window.
 
 For the full documentation index, see [README.md](../README.md#documentation-index).

@@ -74,6 +74,28 @@ user-visible changes in [CHANGELOG.md](../CHANGELOG.md).
 and the type-2 runtime by URL and SHA-256. `packaging/runtime-requirements.txt`
 pins PySide6 and certifi. Change them deliberately.
 
+## Updates and dependency checks
+
+- **Before each release:** run `make audit`. It runs `pip-audit` over both
+  `packaging/runtime-requirements.txt` and `packaging/build-requirements.txt`.
+  CI runs the same two audits on every push and pull request.
+- **Runtime packages:** PySide6 and certifi are pinned exactly. Update the pin,
+  rebuild the image, and smoke-test it with `--smoke-test`, the GUI, and
+  `make soak-qt`; the application must still import, render, and close cleanly.
+- **Build inputs:** update the URL and SHA-256 together in
+  `packaging/downloads.json`, remove the cached file under `build/downloads/`,
+  and rebuild. A checksum mismatch stops the build by design.
+- **Python:** the package supports 3.11+, CI tests 3.13, and the image bundles
+  the pinned 3.13 runtime. Move the CI version, the base-image pin, and the
+  `requires-python` floor together; do not raise the floor without a release
+  note.
+- **PySide6 range:** `pyproject.toml` allows `>=6.8,<7` for a source checkout;
+  the AppImage uses the exact pin. Test the oldest supported minor before
+  widening the range.
+- **Rust:** there is no Rust wrapper and no build-time Rust dependency. The
+  language decision stays gated on a measured need for a small native helper;
+  see [hardening-backlog.md](hardening-backlog.md).
+
 ## Layout
 
 | Path | Purpose |

@@ -2,7 +2,7 @@ PYTHON ?= python3
 PYTHONPATH := src
 PART ?= patch
 
-.PHONY: run gui test typecheck check soak soak-qt bump release appimage clean
+.PHONY: run gui test typecheck check audit soak soak-qt bump release appimage clean
 
 run:
 	./bin/repopull
@@ -11,7 +11,7 @@ gui:
 	./bin/repopull-gui
 
 test:
-	QT_QPA_PLATFORM=offscreen PYTHONPATH=$(PYTHONPATH) $(PYTHON) -m unittest discover -s tests -v
+	QT_QPA_PLATFORM=offscreen PYTHONPATH=$(PYTHONPATH) $(PYTHON) -X dev -X faulthandler -W error -m unittest discover -s tests -v
 
 typecheck:
 	@if mypy --version >/dev/null 2>&1; then \
@@ -19,6 +19,16 @@ typecheck:
 	else \
 		echo "mypy not installed; using uvx"; \
 		uvx mypy --config-file pyproject.toml; \
+	fi
+
+audit:
+	@if command -v pip-audit >/dev/null 2>&1; then \
+		pip-audit -r packaging/runtime-requirements.txt; \
+		pip-audit -r packaging/build-requirements.txt; \
+	else \
+		echo "pip-audit not installed; using uvx"; \
+		uvx pip-audit -r packaging/runtime-requirements.txt; \
+		uvx pip-audit -r packaging/build-requirements.txt; \
 	fi
 
 bump:
