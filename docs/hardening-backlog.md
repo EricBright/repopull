@@ -1,12 +1,12 @@
 # Hardening backlog
 
 Recorded 2026-11-07 after the 0.4.16 release. This is a proposal and reference;
-`tools/soak.py` is the first implemented piece.
+`tools/soak.py` and the process-tree tests are the first implemented pieces.
 
-**Status 2026-11-09 (0.5.1, public):** action 1 is complete. `tools/soak.py`
-measures repeated discovery/status cycles (`make soak`) and Qt window
-create/close cycles (`make soak-qt`), reporting RSS, file descriptors, threads,
-and tracemalloc.
+**Status 2026-11-09 (0.5.1, public):** actions 1 and 2 are done. Action 1 is
+`tools/soak.py`, which measures repeated discovery/status cycles (`make soak`)
+and Qt window create/close cycles (`make soak-qt`), reporting RSS, file
+descriptors, threads, and tracemalloc.
 
 - CLI, 300 cycles: RSS +0.01 MB, 0 descriptors, 0 threads, tracemalloc +24 KB
   (it plateaus, so the early growth was cache, not a leak).
@@ -16,7 +16,11 @@ and tracemalloc.
 - Falsifiability: a planted 64 KiB-per-cycle allocation fails the metrics, and
   a held Qt window fails the window-survival check.
 
-Action 2 is partly covered by `tests/test_git.py`; see its note below.
+Action 2 hardens the process layer: `run_git()` now kills and reaps the group
+when `communicate()` raises, `_terminate_process_group()` escalates from
+SIGTERM to SIGKILL without masking the original error, and tests cover both.
+One gap is accepted and documented: a process that `git` forked can outlive a
+SIGKILL of repopull. Timeout and cancellation kill the whole group.
 
 ## Language decision: Python first; no Rust wrappers
 
@@ -67,10 +71,12 @@ Rust rewrite without evidence that it fixes a specific observed failure class.
    sleeping child; verify timeout, cancellation, and parent-SIGKILL behavior.
    Audit `run_git()` so any exception from `communicate()` still kills and reaps
    the child. Done when no descendant survives the tested paths, or the residual
-   parent-SIGKILL gap is explicitly accepted and documented. **Partly covered:**
-   timeout, cancellation, and parent-SIGKILL of `git` itself are tested in
-   `tests/test_git.py`; the `communicate()` exception path and a forked
-   descendant surviving a parent SIGKILL remain.
+   parent-SIGKILL gap is explicitly accepted and documented. **Done 2026-11-09
+   (one accepted gap):** timeout, cancellation, and parent-SIGKILL of `git`
+   itself are tested; `communicate()` exceptions now kill and reap the group;
+   SIGTERM escalation is tested. A forked descendant surviving a parent SIGKILL
+   is documented by an expected-failure test and accepted, because `pdeathsig`
+   applies to `git`, not its children.
 
 3. **Audit Qt lifetime and signal ownership.** Check long-lived signal
    connections, parentless widgets, worker callbacks, and close-while-running
@@ -101,11 +107,8 @@ Rust rewrite without evidence that it fixes a specific observed failure class.
 ## Known gaps
 
 - A SIGKILL of repopull can still leave children forked by `git`; `pdeathsig`
-  kills `git`, not necessarily its descendants.
-- `run_git()` cleanup on unexpected `communicate()` exceptions is not proven by
-  a test.
-- No automated soak measurement for RSS, file descriptors, threads, or Qt
-  objects.
+  kills `git`, not necessarily its descendants. Accepted and covered by an
+  expected-failure test.
 - `list`/GUI state writes are atomic but not all serialized by the run lock.
 
 For the full documentation index, see [README.md](../README.md#documentation-index).

@@ -149,7 +149,9 @@ repopull from a Git hook or IDE cannot redirect it to another repository. Git
 hooks and `core.fsmonitor` are disabled for these calls; URL userinfo in git
 errors is replaced with `***` before it reaches a log. On Linux, git is launched
 through `setpriv --pdeathsig TERM` when `setpriv` supports it, so a SIGKILL of
-repopull also terminates git; otherwise the direct launch is used.
+repopull terminates git itself. Processes that git forked can still survive a
+repopull SIGKILL; timeout and cancellation kill the whole process group.
+Without `setpriv`, git itself can also survive.
 
 ## Command line
 

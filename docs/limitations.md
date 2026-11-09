@@ -2,6 +2,9 @@
 
 - Runs on Linux: the CLI takes its run lock with `fcntl.flock` and reads
   `/proc/self/mountinfo` for root identity, and the GUI targets Linux desktops.
+- A SIGKILL of repopull may leave a process that `git` forked, such as a remote
+  helper. Timeout and cancellation kill the whole process group; only a SIGKILL
+  of repopull itself is outside that path.
 - Does not clone missing repositories; it only syncs what exists.
 - Does not switch local branches or fast-forward any local branch other than the
   current tracking branch. A normal `git fetch` still updates the remote's

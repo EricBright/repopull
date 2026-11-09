@@ -367,10 +367,12 @@ are removed from the child environment.
 **Consequences:** Local hooks no longer fire during a repopull run, including
 hooks a user may have installed in a watched repo. LFS smudge filters and
 submodule commands still run; this is not a full sandbox. It closes the easiest
-local-code-execution path without changing the fetch/fast-forward contract. On Linux, when `setpriv` is available and supports
-`--pdeathsig`, git is launched through `setpriv --pdeathsig TERM -- git`, so a
-SIGKILL of repopull sends SIGTERM to git as well. Otherwise repopull falls back
-to direct git and the SIGKILL-parent gap remains. See
+local-code-execution path without changing the fetch/fast-forward contract.
+On Linux, when `setpriv` is available and supports `--pdeathsig`, git is launched through `setpriv --pdeathsig TERM -- git`, so a
+SIGKILL of repopull sends SIGTERM to git as well. It does not necessarily reach
+processes git forked; that residual gap is accepted and recorded in
+[hardening-backlog.md](hardening-backlog.md). Without `setpriv`, git itself can
+also survive the parent. See
 [configuration.md](configuration.md#environment-variables).
 
 ## 28. Discovery is asynchronous and remembers the root filesystem

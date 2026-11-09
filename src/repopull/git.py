@@ -139,22 +139,41 @@ def is_network_error(result: GitResult) -> bool:
     return any(marker in text for marker in _NETWORK_MARKERS)
 
 
+def _signal_process_group(
+    process: subprocess.Popen[str], sig: signal.Signals
+) -> None:
+    """Signal the child's process group, ignoring an already-dead child."""
+    try:
+        os.killpg(process.pid, sig)
+    except OSError:
+        pass
+
+
 def _terminate_process_group(
     process: subprocess.Popen[str],
 ) -> tuple[str, str]:
-    """Stop git and any remote helper it spawned, then drain the pipes."""
-    try:
-        os.killpg(process.pid, signal.SIGTERM)
-    except ProcessLookupError:
-        pass
+    """Stop git and any remote helper it spawned, then drain the pipes.
+
+    This is the cleanup path for timeout, cancellation, and any exception from
+    `communicate()`. It must never leave a live child behind and must not mask
+    the caller's exception with a second failure from a closed pipe.
+    """
+    _signal_process_group(process, signal.SIGTERM)
     try:
         return process.communicate(timeout=5)
     except subprocess.TimeoutExpired:
+        _signal_process_group(process, signal.SIGKILL)
+    except Exception:
+        _signal_process_group(process, signal.SIGKILL)
+    try:
+        return process.communicate(timeout=5)
+    except Exception:
+        # Pipes may already be closed; reap without them as a last resort.
         try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
+            process.wait(timeout=5)
+        except (subprocess.TimeoutExpired, OSError):
             pass
-        return process.communicate()
+        return "", ""
 
 
 def _git_env(extra: Mapping[str, str] | None) -> dict[str, str]:
@@ -222,32 +241,39 @@ def run_git(
             timeout_s=timeout,
         )
     deadline = time.monotonic() + timeout
-    while True:
-        remaining = max(0.0, deadline - time.monotonic())
-        try:
-            stdout, stderr = process.communicate(timeout=min(0.2, remaining))
-            break
-        except subprocess.TimeoutExpired:
-            if cancel is not None and cancel.is_set():
-                stdout, stderr = _terminate_process_group(process)
-                return GitResult(
-                    args=command,
-                    returncode=130,
-                    stdout=stdout,
-                    stderr=stderr,
-                    timeout_s=timeout,
-                    cancelled=True,
-                )
-            if time.monotonic() >= deadline:
-                stdout, stderr = _terminate_process_group(process)
-                return GitResult(
-                    args=command,
-                    returncode=124,
-                    stdout=stdout,
-                    stderr=stderr,
-                    timeout_s=timeout,
-                    timed_out=True,
-                )
+    try:
+        while True:
+            remaining = max(0.0, deadline - time.monotonic())
+            try:
+                stdout, stderr = process.communicate(timeout=min(0.2, remaining))
+                break
+            except subprocess.TimeoutExpired:
+                if cancel is not None and cancel.is_set():
+                    stdout, stderr = _terminate_process_group(process)
+                    return GitResult(
+                        args=command,
+                        returncode=130,
+                        stdout=stdout,
+                        stderr=stderr,
+                        timeout_s=timeout,
+                        cancelled=True,
+                    )
+                if time.monotonic() >= deadline:
+                    stdout, stderr = _terminate_process_group(process)
+                    return GitResult(
+                        args=command,
+                        returncode=124,
+                        stdout=stdout,
+                        stderr=stderr,
+                        timeout_s=timeout,
+                        timed_out=True,
+                    )
+    except BaseException:
+        # communicate() can raise for a closed or undecodable pipe, and
+        # KeyboardInterrupt can arrive mid-wait. Kill the group before the
+        # exception leaves, then preserve the original failure.
+        _terminate_process_group(process)
+        raise
     return GitResult(
         args=command,
         returncode=process.returncode,

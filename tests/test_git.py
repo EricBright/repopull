@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -11,9 +12,15 @@ import time
 import unittest
 from pathlib import Path
 from threading import Event, Timer
-from unittest.mock import patch
+from unittest.mock import Mock, call, patch
 
-from repopull.git import GitResult, _git_env, is_network_error, run_git
+from repopull.git import (
+    GitResult,
+    _git_env,
+    _terminate_process_group,
+    is_network_error,
+    run_git,
+)
 
 
 def _result(
@@ -251,3 +258,157 @@ class ProcessGroupTests(unittest.TestCase):
                 time.sleep(0.05)
             else:
                 self.fail(f"child process {child} survived the timeout")
+
+    def test_communicate_exception_still_kills_the_child(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            repo = base / "repo"
+            repo.mkdir()
+            fake_bin = base / "bin"
+            fake_bin.mkdir()
+            pid_file = base / "child.pid"
+            fake_git = fake_bin / "git"
+            fake_git.write_text(
+                "#!/bin/sh\n"
+                "sleep 30 &\n"
+                "echo $! > \"$PIDFILE\"\n"
+                "wait\n",
+                encoding="utf-8",
+            )
+            fake_git.chmod(0o755)
+            real_communicate = subprocess.Popen.communicate
+            calls = 0
+
+            def flaky(process: subprocess.Popen[str], *args: object, **kwargs: object):
+                nonlocal calls
+                calls += 1
+                if calls == 1:
+                    for _ in range(100):
+                        if pid_file.is_file() and pid_file.read_text().strip():
+                            break
+                        time.sleep(0.02)
+                    raise RuntimeError("simulated pipe failure")
+                return real_communicate(process, *args, **kwargs)  # type: ignore[arg-type]
+
+            with patch.object(subprocess.Popen, "communicate", flaky):
+                with self.assertRaises(RuntimeError):
+                    run_git(
+                        repo,
+                        "fetch",
+                        timeout=30,
+                        env={
+                            "PATH": f"{fake_bin}:/usr/bin:/bin",
+                            "PIDFILE": str(pid_file),
+                        },
+                    )
+
+            self.assertTrue(pid_file.is_file())
+            child = int(pid_file.read_text(encoding="utf-8").strip())
+            for _ in range(20):
+                try:
+                    os.kill(child, 0)
+                except ProcessLookupError:
+                    break
+                time.sleep(0.05)
+            else:
+                self.fail(f"child process {child} survived a communicate exception")
+
+    def test_terminate_escalates_to_sigkill(self) -> None:
+        process = Mock()
+        process.pid = 4242
+        process.communicate.side_effect = [
+            subprocess.TimeoutExpired("git", 5),
+            ("out", "err"),
+        ]
+
+        with patch("repopull.git.os.killpg") as killpg:
+            result = _terminate_process_group(process)
+
+        self.assertEqual(result, ("out", "err"))
+        self.assertEqual(
+            killpg.call_args_list,
+            [call(4242, signal.SIGTERM), call(4242, signal.SIGKILL)],
+        )
+
+    def test_terminate_does_not_mask_a_closed_pipe(self) -> None:
+        process = Mock()
+        process.pid = 4242
+        process.communicate.side_effect = RuntimeError("closed pipe")
+        process.wait.return_value = 0
+
+        with patch("repopull.git.os.killpg"):
+            result = _terminate_process_group(process)
+
+        self.assertEqual(result, ("", ""))
+        process.wait.assert_called_once()
+
+    @unittest.expectedFailure
+    @unittest.skipUnless(
+        shutil.which("setpriv"), "setpriv is needed for parent-death testing"
+    )
+    def test_sigkill_of_parent_leaves_git_descendant(self) -> None:
+        """Known residual gap: pdeathsig kills git, not what git forked."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            repo = base / "repo"
+            repo.mkdir()
+            fake_bin = base / "bin"
+            fake_bin.mkdir()
+            pid_file = base / "child.pid"
+            fake_git = fake_bin / "git"
+            fake_git.write_text(
+                "#!/bin/sh\n"
+                "sleep 30 &\n"
+                "echo $! > \"$PIDFILE\"\n"
+                "wait\n",
+                encoding="utf-8",
+            )
+            fake_git.chmod(0o755)
+            parent_code = (
+                "import sys\n"
+                "from pathlib import Path\n"
+                "from repopull.git import run_git\n"
+                "run_git(Path(sys.argv[1]), 'fetch', timeout=30, "
+                "env={'PATH': sys.argv[2], 'PIDFILE': sys.argv[3]})\n"
+            )
+            parent = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-c",
+                    parent_code,
+                    str(repo),
+                    f"{fake_bin}:/usr/bin:/bin",
+                    str(pid_file),
+                ],
+                start_new_session=True,
+            )
+            try:
+                for _ in range(100):
+                    if pid_file.exists() and pid_file.read_text().strip():
+                        break
+                    time.sleep(0.02)
+                else:
+                    self.fail("git child did not start")
+                child = int(pid_file.read_text(encoding="utf-8").strip())
+                parent.kill()
+                parent.wait()
+                try:
+                    for _ in range(10):
+                        try:
+                            os.kill(child, 0)
+                        except ProcessLookupError:
+                            break
+                        time.sleep(0.05)
+                    else:
+                        self.fail(
+                            f"known gap: descendant {child} survived a parent SIGKILL"
+                        )
+                finally:
+                    try:
+                        os.kill(child, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+            finally:
+                if parent.poll() is None:
+                    parent.kill()
+                    parent.wait()
