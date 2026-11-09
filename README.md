@@ -15,14 +15,14 @@ packages; the optional GUI needs PySide6, and the AppImage (x86_64) bundles both
 
 ## Status
 
-**Current release: 0.5.1.** Tests and mypy pass; the latest AppImage was built
-from the 0.5.1 tree. No release blockers. The historical
+**Current release: 0.5.2.** Tests and mypy pass; the latest AppImage was built
+from the 0.5.2 tree. No release blockers. The historical
 [test audit](docs/test-falsifiability.md) covers 0.2.3; a 2026-11-07 re-audit
 covers the 0.4.13 tree at 224 tests; 0.4.14 added one GUI padding test,
 0.4.15 added 12 root-state tests, 0.4.16 added 12, 0.5.0 added 15 for
 per-repository holds, row labels, Open folder, and Next check (264 at that
-release), and 0.5.1 adds 2 scroll-position tests (266 at that release; 284 now
-with the soak-harness, process-tree, GUI lifetime, and TOCTOU tests).
+release), and 0.5.1 adds 2 scroll-position tests (266 at that release). 0.5.2
+adds the soak harness and hardening tests (284 current).
 The 16 px icon keeps its branches at the cost of softness (see
 [branding](docs/branding.md)).
 
@@ -149,14 +149,14 @@ importable, otherwise it lets `uv` provide it for that run.
 
 ```bash
 make appimage
-./dist/repopull-0.5.1-x86_64.AppImage
+./dist/repopull-0.5.2-x86_64.AppImage
 ```
 
 The image bundles Python 3.13, PySide6 and repopull. Run the CLI from it with
 `--cli`:
 
 ```bash
-./dist/repopull-0.5.1-x86_64.AppImage --cli status
+./dist/repopull-0.5.2-x86_64.AppImage --cli status
 ```
 
 It keeps `config.toml` and logs in `~/.config/repopull` (or `$REPOPULL_HOME`).
@@ -261,7 +261,7 @@ make audit       # check packaging pins against known advisories
 make soak        # CLI resource soak against throwaway local repos
 make soak-qt     # Qt window create/close soak
 make gui         # launch the optional PySide6 interface
-make appimage    # build dist/repopull-0.5.1-x86_64.AppImage
+make appimage    # build dist/repopull-0.5.2-x86_64.AppImage
 make bump        # increment the patch version
 make release     # check, bump the patch, build the AppImage
 ```

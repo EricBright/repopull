@@ -3,7 +3,7 @@
 Recorded 2026-11-07 after the 0.4.16 release. This is a proposal and reference;
 `tools/soak.py` and the process-tree tests are the first implemented pieces.
 
-**Status 2026-11-09 (0.5.1, public):** all five actions are done. Action 1 is
+**Status 2026-11-09 (0.5.2, public):** all five actions are done. Action 1 is
 `tools/soak.py`, which measures repeated discovery/status cycles (`make soak`)
 and Qt window create/close cycles (`make soak-qt`), reporting RSS, file
 descriptors, threads, and tracemalloc.

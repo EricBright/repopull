@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.2 — 2026-11-09
+
+- Harden `run_git()` so an exception from `communicate()` still kills and reaps
+  the git process group; escalation from SIGTERM to SIGKILL is tested. A SIGKILL
+  of repopull itself can still orphan a process that git forked; that residual
+  gap is documented.
+- Root-state repair re-reads the saved state and the mounted filesystem identity
+  before writing, so a stale confirmation cannot overwrite a newer observation.
+- Add a resource soak harness (`make soak`, `make soak-qt`) plus process-tree,
+  Qt lifetime, close-while-running, TOCTOU, and cancellation coverage.
+- CI runs tests in development mode with warnings as errors and faulthandler,
+  and audits both packaging requirement files with `pip-audit`.
+
 ## 0.5.1 — 2026-11-08
 
 - Returning from a repository's detail page keeps the library's scroll
