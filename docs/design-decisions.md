@@ -567,4 +567,22 @@ stale label, which is harmless but no longer matches; pruning would risk losing
 holds while a disk is unmounted. See
 [configuration.md](configuration.md#per-repository-holds).
 
+## 36. Root repair revalidates, and state writes are last-writer-wins
+
+**Context:** A repair dialog can sit on screen while the disk is remounted, or
+another process can replace `root-state.json`, between the check and the write.
+Writing the confirmed-at-the-time identity would then overwrite a newer
+observation with a stale one.
+
+**Decision:** `repair_root_state()` re-reads the saved state and the current
+filesystem identity immediately before writing. If either differs from the
+values shown in the dialog, it refuses and asks for a refresh. Every state write
+is still an atomic replace, so readers never see a partial file. Two concurrent
+writers are last-writer-wins.
+
+**Consequences:** A stale confirmation cannot silently accept the wrong disk or
+replace a newer state. A real concurrent change requires one retry. A writer
+that loses the race leaves a complete, readable state behind. See
+[hardening-backlog.md](hardening-backlog.md).
+
 For the full documentation index, see [README.md](../README.md#documentation-index).

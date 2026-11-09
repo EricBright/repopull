@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
 
@@ -13,8 +14,10 @@ from repopull.rootstate import (
     ROOT_STATE_FILE,
     ROOT_STATE_VERSION,
     RootState,
+    RootStateChanged,
     check_root_state,
     read_root_state,
+    repair_root_state,
     root_state_problem,
     save_root_state,
 )
@@ -429,3 +432,116 @@ class RootStateTests(unittest.TestCase):
 
             names = sorted(path.name for path in logs.iterdir())
             self.assertEqual(names, [ROOT_STATE_FILE])
+
+    def _repair_setup(self, base: Path) -> tuple[Path, Path, int]:
+        root = base / "repos"
+        root.mkdir()
+        logs = base / "logs"
+        logs.mkdir()
+        device = root.stat().st_dev
+        (logs / ROOT_STATE_FILE).write_text(
+            json.dumps(
+                {
+                    "version": 2,
+                    "root": str(root),
+                    "device": device + 1,
+                    "repo_count": 3,
+                    "filesystem_uuid": None,
+                }
+            ),
+            encoding="utf-8",
+        )
+        return root, logs, device
+
+    def test_repair_refuses_when_state_file_changed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root, logs, device = self._repair_setup(Path(tmp))
+            with patch(
+                "repopull.rootstate.root_identity",
+                return_value=RootIdentity(device, None, None),
+            ):
+                check = check_root_state(logs, root, 3)
+            self.assertTrue(check.repairable)
+
+            replacement = {
+                "version": 2,
+                "root": str(root),
+                "device": device + 2,
+                "repo_count": 5,
+            }
+            (logs / ROOT_STATE_FILE).write_text(
+                json.dumps(replacement), encoding="utf-8"
+            )
+
+            with self.assertRaises(RootStateChanged):
+                repair_root_state(logs, root, check)
+
+            state = read_root_state(logs).state
+            self.assertIsNotNone(state)
+            assert state is not None
+            self.assertEqual(state.device, device + 2)
+            self.assertEqual(state.repo_count, 5)
+
+    def test_repair_refuses_when_mount_changed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root, logs, device = self._repair_setup(Path(tmp))
+            with patch(
+                "repopull.rootstate.root_identity",
+                return_value=RootIdentity(device, "uuid-A", "/dev/sdb1"),
+            ):
+                check = check_root_state(logs, root, 3)
+            self.assertTrue(check.repairable)
+
+            with patch(
+                "repopull.rootstate.root_identity",
+                return_value=RootIdentity(device + 4, "uuid-B", "/dev/sdc1"),
+            ):
+                with self.assertRaises(RootStateChanged):
+                    repair_root_state(logs, root, check)
+
+            state = read_root_state(logs).state
+            self.assertIsNotNone(state)
+            assert state is not None
+            self.assertEqual(state.device, device + 1)
+
+    def test_repair_writes_when_nothing_changed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root, logs, device = self._repair_setup(Path(tmp))
+            with patch(
+                "repopull.rootstate.root_identity",
+                return_value=RootIdentity(device, "uuid-A", "/dev/sdb1"),
+            ):
+                check = check_root_state(logs, root, 3)
+                repair_root_state(logs, root, check)
+
+            state = read_root_state(logs).state
+            self.assertIsNotNone(state)
+            assert state is not None
+            self.assertEqual(state.device, device)
+            self.assertEqual(state.filesystem_uuid, "uuid-A")
+            self.assertEqual(state.repo_count, 3)
+
+    def test_concurrent_saves_leave_one_valid_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            root = base / "repos"
+            root.mkdir()
+            logs = base / "logs"
+            logs.mkdir()
+            identity = RootIdentity(root.stat().st_dev, None, None)
+
+            def writer(index: int) -> None:
+                for _ in range(25):
+                    save_root_state(
+                        logs, root, 100 + index, identity=identity
+                    )
+
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                list(pool.map(writer, range(8)))
+
+            state = read_root_state(logs).state
+            self.assertIsNotNone(state)
+            assert state is not None
+            self.assertIn(state.repo_count, {100 + index for index in range(8)})
+            leftovers = list(logs.glob("*.tmp"))
+            self.assertEqual(leftovers, [])

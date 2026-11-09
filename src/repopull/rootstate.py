@@ -44,6 +44,10 @@ class RootStateRead:
     problem: str | None = None
 
 
+class RootStateChanged(RuntimeError):
+    """The saved or mounted identity changed before a repair could apply."""
+
+
 def _state_path(log_dir: Path) -> Path:
     return log_dir / ROOT_STATE_FILE
 
@@ -199,6 +203,9 @@ def save_root_state(
     ``identity`` must be the one that was just checked. When it is omitted,
     the current filesystem is read here; callers that already verified an
     identity should pass it so a remount cannot change what is written.
+
+    Concurrent writers are last-writer-wins: each write is an atomic replace,
+    so readers see one complete state or the other, never a partial file.
     """
     current = identity if identity is not None else root_identity(root)
     if (
@@ -343,3 +350,45 @@ def check_root_state(
         except OSError:
             pass
     return RootStateCheck(None, previous, current, repo_count)
+
+
+def repair_root_state(
+    log_dir: Path, root: Path, check: RootStateCheck
+) -> RootIdentity:
+    """Accept the checked identity only if nothing changed meanwhile.
+
+    The GUI confirmation can sit on screen while a disk is remounted or
+    another writer replaces the state file. Re-read both sides immediately
+    before writing; if either moved, refuse instead of overwriting a newer
+    observation with a stale one.
+    """
+    if (
+        not check.repairable
+        or check.previous is None
+        or check.current is None
+    ):
+        raise ValueError("this root state is not repairable")
+
+    loaded = read_root_state(log_dir)
+    if loaded.problem is not None:
+        raise RootStateChanged(loaded.problem)
+    if loaded.state != check.previous:
+        raise RootStateChanged(
+            "the saved root state changed while the confirmation was open"
+        )
+
+    current = root_identity(root)
+    if current != check.current:
+        raise RootStateChanged(
+            "the watched folder's mounted filesystem changed while the "
+            "confirmation was open"
+        )
+
+    save_root_state(
+        log_dir,
+        root,
+        check.repo_count,
+        identity=current,
+        previous=check.previous,
+    )
+    return current

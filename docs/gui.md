@@ -28,7 +28,9 @@ window; the empty view says it is scanning until the result arrives.
 If the watched folder now resolves to a different filesystem, the library
 explains the mismatch and offers **Repair saved root state**. The confirmation
 shows the saved and current filesystem identities; repairing replaces only the
-saved identity and does not touch the repositories. A reboot that changes only
+saved identity and does not touch the repositories. If the saved state or the
+mounted disk changes while the confirmation is open, repair refuses and asks
+for a refresh instead of writing the stale identity. A reboot that changes only
 an unstable device number is accepted by the filesystem UUID, so the prompt
 should not appear for that case once the state file has a UUID.
 

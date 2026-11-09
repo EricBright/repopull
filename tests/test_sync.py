@@ -6,7 +6,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from threading import Event
+from threading import Event, Timer
 from unittest.mock import patch
 
 import support
@@ -447,6 +447,44 @@ class SyncIntegrationTests(unittest.TestCase):
 
         self.assertIs(report.rows[0].outcome, Outcome.SKIPPED)
         self.assertIn("cancelled", report.rows[0].detail)
+
+    def test_cancellation_during_fetch_leaves_the_worktree_alone(self) -> None:
+        _remote, seed, watched = self._pair()
+        support.commit_upstream(seed, "two\n", "two")
+        cancel = Event()
+        started = Event()
+
+        def slow_fetch(
+            _repo: Path, *, timeout: float, cancel: Event | None = None
+        ) -> git.GitResult:
+            started.set()
+            if cancel is not None:
+                cancel.wait(2)
+            return git.GitResult(
+                args=("git", "fetch"),
+                returncode=130,
+                stdout="",
+                stderr="cancelled",
+                timeout_s=timeout,
+                cancelled=True,
+            )
+
+        timer = Timer(0.05, cancel.set)
+        timer.start()
+        self.addCleanup(timer.cancel)
+        with patch("repopull.sync.git.fetch", slow_fetch):
+            report = sync_report(
+                [RepoRef(watched, "repo")],
+                _config(self.base),
+                cancel=cancel,
+            )
+
+        self.assertTrue(started.is_set())
+        self.assertIs(report.rows[0].outcome, Outcome.SKIPPED)
+        self.assertIn("cancelled", report.rows[0].detail)
+        self.assertEqual(
+            (watched / "file.txt").read_text(encoding="utf-8"), "one\n"
+        )
 
     def test_on_row_emits_each_repository_as_it_finishes(self) -> None:
         _remote, seed, watched = self._pair()

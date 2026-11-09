@@ -96,11 +96,12 @@ from repopull.refresh import (
 from repopull.report import check_log_dir, load_latest_report
 from repopull.rootstate import (
     ROOT_STATE_FILE,
+    RootStateChanged,
     RootStateCheck,
     check_root_state,
     describe_identity,
     describe_state,
-    save_root_state,
+    repair_root_state,
 )
 from repopull.uistate import UiState, load_ui_state, save_ui_state
 _ASSETS = Path(__file__).resolve().parent / "assets"
@@ -1329,13 +1330,20 @@ class MainWindow(QMainWindow):
         if answer != QMessageBox.StandardButton.Yes:
             return
         try:
-            save_root_state(
-                self.config.log_dir,
-                root,
-                check.repo_count,
-                identity=check.current,
-                previous=check.previous,
+            repair_root_state(self.config.log_dir, root, check)
+        except RootStateChanged as exc:
+            QMessageBox.warning(
+                self,
+                "repopull",
+                f"{exc}. Run Refresh status and try again.",
             )
+            self.root_state_check = None
+            if self._discover_async:
+                self._start_discovery()
+            else:
+                self._reload_refs()
+                self._render_library()
+            return
         except OSError as exc:
             QMessageBox.warning(
                 self,

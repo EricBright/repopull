@@ -151,6 +151,53 @@ if HAVE_PYSIDE:
                 self.assertEqual(saved["version"], 2)
                 window.close()
 
+        def test_repair_refuses_when_the_state_file_moved(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = self._tree(base)
+                logs = base / "logs"
+                logs.mkdir()
+                state_path = logs / "root-state.json"
+                state_path.write_text(
+                    json.dumps(
+                        {
+                            "root": str(root),
+                            "device": root.stat().st_dev + 1,
+                            "repo_count": 3,
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                window = MainWindow(self._config(base, root))
+                self.assertTrue(window.root_state_check is not None)
+                self.assertTrue(window.root_state_check.repairable)
+
+                replacement = {
+                    "version": 2,
+                    "root": str(root),
+                    "device": root.stat().st_dev + 2,
+                    "repo_count": 5,
+                }
+                state_path.write_text(json.dumps(replacement), encoding="utf-8")
+
+                with (
+                    patch(
+                        "repopull.gui.window.QMessageBox.question",
+                        return_value=QMessageBox.StandardButton.Yes,
+                    ),
+                    patch(
+                        "repopull.gui.window.QMessageBox.warning"
+                    ) as warning,
+                ):
+                    window._repair_root_state()
+
+                warning.assert_called_once()
+                self.assertIn("changed", warning.call_args.args[2])
+                saved = json.loads(state_path.read_text())
+                self.assertEqual(saved["device"], root.stat().st_dev + 2)
+                self.assertEqual(saved["repo_count"], 5)
+                window.close()
+
         def test_behind_refs_selects_only_behind(self) -> None:
             with tempfile.TemporaryDirectory() as tmp:
                 base = Path(tmp)
