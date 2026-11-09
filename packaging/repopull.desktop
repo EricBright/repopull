@@ -6,4 +6,5 @@ Exec=repopull
 Icon=repopull
 Terminal=false
 Categories=Development;
+# X11 association; native Wayland uses the app id set by Qt.
 StartupWMClass=repopull
