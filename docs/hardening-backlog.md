@@ -1,13 +1,16 @@
 # Hardening backlog
 
-Recorded 2026-11-07 after the 0.4.16 release. This is a proposal and reference,
-not shipped functionality.
+Recorded 2026-11-07 after the 0.4.16 release. This is a proposal and reference;
+`tools/soak.py` is the first implemented piece.
 
-**Status 2026-11-08 (0.5.1):** the current release is 0.5.1. No item below has
-started; the backlog and known gaps are unchanged. A fresh session should begin
-with action 1 (resource soak) or action 2 (process-tree termination). The
-`v0.5.1` git tag marks the release; this handoff note is a follow-up commit, and
-there is no `v*/` snapshot.
+**Status 2026-11-09 (0.5.1, public):** action 1 is half done. `tools/soak.py`
+and `make soak` run repeated discovery/status cycles against throwaway local
+repositories and report RSS, file descriptors, threads, and tracemalloc. A
+300-cycle baseline on 2026-11-09 stayed flat: RSS +0.01 MB, 0 descriptors,
+0 threads, and tracemalloc +24 KB (it plateaus, so the early growth was cache,
+not a leak). A planted 64 KiB-per-cycle leak fails the run, so the harness is
+falsifiable. The Qt window soak is the remaining half of action 1. Action 2 is
+partly covered by `tests/test_git.py`; see its note below.
 
 ## Language decision: Python first; no Rust wrappers
 
@@ -50,12 +53,18 @@ Rust rewrite without evidence that it fixes a specific observed failure class.
    and measure RSS, open file descriptors, thread count, and `tracemalloc`
    growth. Add a repeated Qt window create/close test with `weakref` and
    `shiboken6.isValid()` checks. Done when a leak produces a failing report.
+   **Started 2026-11-09:** the CLI half is `tools/soak.py` + `make soak`
+   (100/300-cycle baseline flat; planted leak fails). Remaining: the Qt window
+   soak.
 
 2. **Test and harden process-tree termination.** Add a fake `git` that forks a
    sleeping child; verify timeout, cancellation, and parent-SIGKILL behavior.
    Audit `run_git()` so any exception from `communicate()` still kills and reaps
    the child. Done when no descendant survives the tested paths, or the residual
-   parent-SIGKILL gap is explicitly accepted and documented.
+   parent-SIGKILL gap is explicitly accepted and documented. **Partly covered:**
+   timeout, cancellation, and parent-SIGKILL of `git` itself are tested in
+   `tests/test_git.py`; the `communicate()` exception path and a forked
+   descendant surviving a parent SIGKILL remain.
 
 3. **Audit Qt lifetime and signal ownership.** Check long-lived signal
    connections, parentless widgets, worker callbacks, and close-while-running

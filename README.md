@@ -21,7 +21,8 @@ from the 0.5.1 tree. No release blockers. The historical
 covers the 0.4.13 tree at 224 tests; 0.4.14 added one GUI padding test,
 0.4.15 added 12 root-state tests, 0.4.16 added 12, 0.5.0 added 15 for
 per-repository holds, row labels, Open folder, and Next check (264 at that
-release), and 0.5.1 adds 2 scroll-position tests (266 current).
+release), and 0.5.1 adds 2 scroll-position tests (266 at that release; 272 now
+with the soak-harness tests).
 The 16 px icon keeps its branches at the cost of softness (see
 [branding](docs/branding.md)).
 
@@ -245,6 +246,7 @@ auto_refresh_pause_when_hidden = false
 | `docs/` | Architecture, configuration, GUI, packaging, branding, design rationale, test audit. |
 | `docs/previews/` | Screenshots used in the docs. |
 | `tests/` | Unit and integration tests (throwaway git repos). |
+| `tools/` | Development-only soak harness (`make soak`). |
 | `workflows/` | The loop spec this tool implements. |
 | `NOTES.md` | Original 2026-11-05 survey of the watched world and terminology. |
 | `Makefile` | `make test`, `make typecheck`, `make gui`, `make appimage`. |
@@ -255,6 +257,7 @@ auto_refresh_pause_when_hidden = false
 make test        # unit and integration tests, offline, uses temp repos
 make typecheck   # mypy --strict
 make check       # both
+make soak        # resource soak against throwaway local repos
 make gui         # launch the optional PySide6 interface
 make appimage    # build dist/repopull-0.5.1-x86_64.AppImage
 make bump        # increment the patch version

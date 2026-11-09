@@ -2,7 +2,7 @@ PYTHON ?= python3
 PYTHONPATH := src
 PART ?= patch
 
-.PHONY: run gui test typecheck check bump release appimage clean
+.PHONY: run gui test typecheck check soak bump release appimage clean
 
 run:
 	./bin/repopull
@@ -35,6 +35,9 @@ appimage:
 	build/packaging-env/bin/python packaging/build_appimage.py
 
 check: typecheck test
+
+soak:
+	PYTHONPATH=$(PYTHONPATH) $(PYTHON) tools/soak.py
 
 clean:
 	find . -name '__pycache__' -type d -prune -exec rm -rf {} +
