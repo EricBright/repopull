@@ -6,3 +6,4 @@ Exec=repopull
 Icon=repopull
 Terminal=false
 Categories=Development;
+StartupWMClass=repopull
