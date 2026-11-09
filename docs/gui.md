@@ -195,6 +195,19 @@ The GUI holds the same `logs/.lock` as the CLI, so two runs cannot overlap.
 - The window is dark-only.
 - Keyboard navigation is basic.
 
+## Window lifetime
+
+The window and its background task are separate. Closing while a run is active
+cancels the task, ignores the close, and quits after the task reports; the
+window stays alive until then. Worker signals are connected to the window and
+auto-disconnect when it is destroyed, so a finished task cannot keep a deleted
+window alive. Dialogs are modal and parented to the window, except the
+"already running" warning shown before a window exists.
+
+`make soak-qt` creates and destroys the real window 100 times and fails if a
+Python wrapper, C++ object, or child widget survives. `tests/test_gui.py` covers
+close-while-running, task collectability, and signal ownership.
+
 ## Tests
 
 `make test` runs the GUI tests offscreen (`QT_QPA_PLATFORM=offscreen`) and skips

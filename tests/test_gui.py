@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import dataclasses
+import gc
 import json
 import os
 import shutil
 import tempfile
 import time
 import unittest
+import weakref
 from datetime import datetime
 from pathlib import Path
+from threading import Event
 from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -23,12 +26,13 @@ else:
     HAVE_PYSIDE = True
 
 if HAVE_PYSIDE:
-    from PySide6.QtCore import Qt, QThreadPool
+    from PySide6.QtCore import QCoreApplication, QEvent, Qt, QThreadPool
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QMessageBox
 
     from repopull.config import Config, load_config, save_config
     from repopull.diagnostics import LfsStatus
+    from repopull.gui.jobs import RunTask
     from repopull.gui.rows import row_view, unchecked_view
     from repopull.gui.settings import SETTINGS_SECTIONS
     from repopull.gui.switch import Switch
@@ -1409,6 +1413,92 @@ if HAVE_PYSIDE:
                 self.assertFalse(window.isVisible())
                 self.assertFalse(window._quit_requested)
                 window.request_quit()
+
+        def test_close_while_running_cancels_and_window_is_collectable(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                logs = base / "logs"
+                logs.mkdir()
+                window = MainWindow(self._config(base, self._tree(base)))
+                window.show()
+                self.app.processEvents()
+                started = Event()
+
+                def operation(
+                    cancel: Event, _progress: object, _row: object
+                ) -> Report:
+                    started.set()
+                    while not cancel.is_set():
+                        time.sleep(0.01)
+                    return Report(
+                        mode="status",
+                        started_at=datetime.now(),
+                        elapsed_s=0.0,
+                        rows=(),
+                    )
+
+                task = RunTask(operation, logs)
+                task.signals.finished.connect(window._on_finished)
+                task.signals.cancelled.connect(window._on_cancelled)
+                task.signals.failed.connect(window._on_failed)
+                window.task = task
+                QThreadPool.globalInstance().start(task)
+                self.assertTrue(started.wait(2.0))
+
+                with patch.object(MainWindow, "_quit_application", lambda self: None):
+                    window.close()
+                    self.assertTrue(window._quit_requested)
+                    self.assertTrue(task.cancel.is_set())
+                    deadline = time.monotonic() + 5
+                    while window.task is not None and time.monotonic() < deadline:
+                        self.app.processEvents()
+                        time.sleep(0.01)
+
+                self.assertIsNone(window.task)
+                QThreadPool.globalInstance().waitForDone(2000)
+                task_reference = weakref.ref(task)
+
+                reference = weakref.ref(window)
+                window.deleteLater()
+                QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+                self.app.processEvents()
+                del window
+                gc.collect()
+                self.app.processEvents()
+                self.assertIsNone(reference())
+
+                del task
+                gc.collect()
+                self.assertIsNone(task_reference())
+
+        def test_task_signals_do_not_retain_a_deleted_window(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                window = MainWindow(self._config(base, self._tree(base)))
+                task = RunTask(
+                    lambda _cancel, _progress, _row: Report(
+                        mode="status",
+                        started_at=datetime.now(),
+                        elapsed_s=0.0,
+                        rows=(),
+                    ),
+                    base / "logs",
+                )
+                task.signals.finished.connect(window._on_finished)
+                task.signals.cancelled.connect(window._on_cancelled)
+                task.signals.failed.connect(window._on_failed)
+                reference = weakref.ref(window)
+
+                window.deleteLater()
+                QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+                self.app.processEvents()
+                del window
+                gc.collect()
+                self.app.processEvents()
+
+                self.assertIsNone(reference())
+                self.assertIsNotNone(task)
+
 
 
 if __name__ == "__main__":

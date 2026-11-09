@@ -3,7 +3,7 @@
 Recorded 2026-11-07 after the 0.4.16 release. This is a proposal and reference;
 `tools/soak.py` and the process-tree tests are the first implemented pieces.
 
-**Status 2026-11-09 (0.5.1, public):** actions 1 and 2 are done. Action 1 is
+**Status 2026-11-09 (0.5.1, public):** actions 1–3 are done. Action 1 is
 `tools/soak.py`, which measures repeated discovery/status cycles (`make soak`)
 and Qt window create/close cycles (`make soak-qt`), reporting RSS, file
 descriptors, threads, and tracemalloc.
@@ -21,6 +21,11 @@ when `communicate()` raises, `_terminate_process_group()` escalates from
 SIGTERM to SIGKILL without masking the original error, and tests cover both.
 One gap is accepted and documented: a process that `git` forked can outlive a
 SIGKILL of repopull. Timeout and cancellation kill the whole group.
+
+Action 3 audits Qt lifetime. Worker signals auto-disconnect when the window is
+destroyed, so a finished task cannot retain it; close-while-running cancels the
+task and quits only after it reports; windows and tasks are collectable in the
+tests. The only parentless widget is the pre-window "already running" warning.
 
 ## Language decision: Python first; no Rust wrappers
 
@@ -82,6 +87,8 @@ Rust rewrite without evidence that it fixes a specific observed failure class.
    connections, parentless widgets, worker callbacks, and close-while-running
    behavior. Add a quit/cancel stress test and ensure windows and tasks are
    collectable. Done when repeated open/close leaves no retained windows.
+   **Done 2026-11-09:** `make soak-qt` covers repeated create/close; GUI tests
+   cover close-while-running, task collectability, and signal ownership.
 
 4. **Add race and TOCTOU fault injection.** Deterministically test mount changes
    between scan and state write, state-file changes during repair, cancellation
