@@ -1,7 +1,7 @@
 # Hardening backlog
 
-Recorded 2026-11-07 after the 0.4.16 release. This is a proposal and reference;
-`tools/soak.py` and the process-tree tests are the first implemented pieces.
+Recorded 2026-11-07 after the 0.4.16 release. All five actions were implemented
+on 2026-11-09; this file remains the rationale and known-gap record.
 
 **Status 2026-11-09 (0.5.2, public):** all five actions are done. Action 1 is
 `tools/soak.py`, which measures repeated discovery/status cycles (`make soak`)
@@ -37,6 +37,25 @@ Action 5 adds CI guardrails. `make test` runs under `-X dev -X faulthandler
 -W error`; CI audits both packaging requirement files with `pip-audit`; the
 update and pin policy is in [packaging.md](packaging.md#updates-and-dependency-checks).
 The Rust decision remains gated and no Rust is built.
+
+## Current state and next session (2026-11-09)
+
+- **Release:** 0.5.2, tag `v0.5.2` at `325e082`; AppImage SHA-256
+  `92c8b36792fba5ff5c0587a39b1ed0bb37278ae0186db9f28db7f7c3493bc348`.
+- **Post-release commits:** `81a7d35` sets `StartupWMClass` in the desktop
+  entry, `35c0831` comments it, `8034463` automates local Markdown link checks,
+  and this handoff update follows. Run `git log v0.5.2..main` for the exact
+  list.
+- **No 0.5.3 has been cut.** Hold unless the X11 hint must ship in a binary;
+  otherwise it rides with the next release.
+- **Checks:** 287 tests (284 at the 0.5.2 release), mypy strict clean,
+  `make audit` clean, CI green.
+- **Hardening:** all five actions done. Known gaps are at the end of this file.
+- **Possible next work:** a 3.11 CI leg (the package declares 3.11+ but CI
+  tests 3.13), or a release only when there is user-facing work. Run the
+  documentation protocol on structural changes, not after every edit.
+- **Resume with:** `make check` and `make audit`; read [README.md](../README.md)
+  for the current release and entry points.
 
 ## Language decision: Python first; no Rust wrappers
 

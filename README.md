@@ -16,7 +16,9 @@ packages; the optional GUI needs PySide6, and the AppImage (x86_64) bundles both
 ## Status
 
 **Current release: 0.5.2.** Tests and mypy pass; the latest AppImage was built
-from the 0.5.2 tree. No release blockers. The historical
+from the 0.5.2 tree. No release blockers. The repository has post-release
+commits (an X11 desktop hint and an automated local-link test); no 0.5.3 has
+been cut. The historical
 [test audit](docs/test-falsifiability.md) covers 0.2.3; a 2026-11-07 re-audit
 covers the 0.4.13 tree at 224 tests; 0.4.14 added one GUI padding test,
 0.4.15 added 12 root-state tests, 0.4.16 added 12, 0.5.0 added 15 for
