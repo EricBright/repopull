@@ -3,14 +3,20 @@
 Recorded 2026-11-07 after the 0.4.16 release. This is a proposal and reference;
 `tools/soak.py` is the first implemented piece.
 
-**Status 2026-11-09 (0.5.1, public):** action 1 is half done. `tools/soak.py`
-and `make soak` run repeated discovery/status cycles against throwaway local
-repositories and report RSS, file descriptors, threads, and tracemalloc. A
-300-cycle baseline on 2026-11-09 stayed flat: RSS +0.01 MB, 0 descriptors,
-0 threads, and tracemalloc +24 KB (it plateaus, so the early growth was cache,
-not a leak). A planted 64 KiB-per-cycle leak fails the run, so the harness is
-falsifiable. The Qt window soak is the remaining half of action 1. Action 2 is
-partly covered by `tests/test_git.py`; see its note below.
+**Status 2026-11-09 (0.5.1, public):** action 1 is complete. `tools/soak.py`
+measures repeated discovery/status cycles (`make soak`) and Qt window
+create/close cycles (`make soak-qt`), reporting RSS, file descriptors, threads,
+and tracemalloc.
+
+- CLI, 300 cycles: RSS +0.01 MB, 0 descriptors, 0 threads, tracemalloc +24 KB
+  (it plateaus, so the early growth was cache, not a leak).
+- Qt, 100 cycles: RSS +0.05 MB, 0 descriptors, 0 threads, tracemalloc +62 KB.
+  Every window was collected (`weakref` and `shiboken6.isValid`) and the widget
+  count returned to baseline after each cycle.
+- Falsifiability: a planted 64 KiB-per-cycle allocation fails the metrics, and
+  a held Qt window fails the window-survival check.
+
+Action 2 is partly covered by `tests/test_git.py`; see its note below.
 
 ## Language decision: Python first; no Rust wrappers
 
@@ -53,9 +59,9 @@ Rust rewrite without evidence that it fixes a specific observed failure class.
    and measure RSS, open file descriptors, thread count, and `tracemalloc`
    growth. Add a repeated Qt window create/close test with `weakref` and
    `shiboken6.isValid()` checks. Done when a leak produces a failing report.
-   **Started 2026-11-09:** the CLI half is `tools/soak.py` + `make soak`
-   (100/300-cycle baseline flat; planted leak fails). Remaining: the Qt window
-   soak.
+   **Done 2026-11-09:** `tools/soak.py`, `make soak`, and `make soak-qt`.
+   CLI and Qt baselines were flat; planted allocation and window leaks both
+   fail the run.
 
 2. **Test and harden process-tree termination.** Add a fake `git` that forks a
    sleeping child; verify timeout, cancellation, and parent-SIGKILL behavior.

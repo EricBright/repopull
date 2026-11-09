@@ -1,18 +1,23 @@
 """Resource soak harness for repopull.
 
 Runs repeated discovery/status (or sync) cycles against throwaway local
-repositories and reports growth in resident memory, open file descriptors,
-threads, and Python allocations. It is deliberately outside `make check`: a
-soak is slower than the unit suite and its thresholds depend on the machine.
+repositories, or repeated Qt window create/close cycles, and reports growth in
+resident memory, open file descriptors, threads, and Python allocations. It is
+deliberately outside `make check`: a soak is slower than the unit suite and its
+thresholds depend on the machine.
 
 Usage:
 
     make soak
+    make soak-qt
     python tools/soak.py --cycles 200 --repos 6
+    python tools/soak.py --qt --cycles 100
     python tools/soak.py --cycles 20 --warmup 5 --repos 2 --plant-leak
 
 `--plant-leak` adds a 64 KiB object per cycle to a module-level list. A healthy
 harness must fail that run; if it passes, the harness is not measuring anything.
+`--plant-window` keeps one Qt window alive per cycle and must trip the
+window-survival check.
 """
 
 from __future__ import annotations
@@ -28,6 +33,7 @@ import tempfile
 import time
 import tracemalloc
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -43,6 +49,7 @@ from repopull.sync import status_report, sync_report  # noqa: E402
 
 PLANT_BYTES = 64 * 1024
 _LEAKED: list[bytes] = []
+_HELD_WINDOWS: list[object] = []
 
 
 @dataclass(frozen=True, slots=True)
@@ -341,13 +348,138 @@ def _print_sample(sample: Sample) -> None:
     )
 
 
+def _measure(
+    args: argparse.Namespace, step: Callable[[], float]
+) -> tuple[Series, tracemalloc.Snapshot | None]:
+    """Run warm-up and measured cycles, returning the series and baseline."""
+    tracemalloc.start(1)
+    series = Series()
+    baseline: tracemalloc.Snapshot | None = None
+    total = args.warmup + args.cycles
+    for index in range(total):
+        elapsed_ms = step()
+        if args.plant_leak:
+            _LEAKED.append(b"x" * PLANT_BYTES)
+        if index < args.warmup:
+            continue
+        if baseline is None:
+            baseline = tracemalloc.take_snapshot()
+        sample = _sample(index - args.warmup + 1, elapsed_ms)
+        series.add(sample)
+        if args.verbose or series.count == 1 or series.count % 10 == 0:
+            if series.count == 1:
+                _print_header()
+            _print_sample(sample)
+    return series, baseline
+
+
+def _finish(
+    series: Series, baseline: "tracemalloc.Snapshot | None", args: argparse.Namespace
+) -> int:
+    findings = series.findings(
+        rss_limit_mb=args.rss_limit_mb,
+        fd_limit=args.fd_limit,
+        thread_limit=args.thread_limit,
+        trace_limit_kb=args.trace_limit_kb,
+    )
+
+    print()
+    for finding in findings:
+        print(finding.line())
+
+    failures = [finding for finding in findings if not finding.ok]
+    if failures:
+        assert baseline is not None
+        print("\ntop Python allocations since the last warm-up cycle:")
+        final = tracemalloc.take_snapshot()
+        for stat in final.compare_to(baseline, "lineno")[:8]:
+            print(f"  {stat}")
+        print(f"\nresult: FAIL ({len(failures)} metric(s) over limit)")
+        return 1
+
+    print("\nresult: PASS")
+    return 0
+
+
+def _soak_cli(config: Config, args: argparse.Namespace) -> int:
+    def step() -> float:
+        clock = time.perf_counter()
+        _run_cycle(config, args.mode)
+        return (time.perf_counter() - clock) * 1000
+
+    series, baseline = _measure(args, step)
+    return _finish(series, baseline, args)
+
+
+def _soak_qt(config: Config, args: argparse.Namespace) -> int:
+    import weakref
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        import shiboken6
+        from PySide6.QtCore import QCoreApplication, QEvent
+        from PySide6.QtWidgets import QApplication
+    except ImportError as exc:
+        raise SystemExit(f"--qt needs PySide6: {exc}") from exc
+
+    from repopull.gui.theme import stylesheet
+    from repopull.gui.window import MainWindow
+
+    app = QApplication.instance() or QApplication(["repopull-soak-qt"])
+    app.setStyle("Fusion")
+    app.setStyleSheet(stylesheet())
+    app.setQuitOnLastWindowClosed(False)
+    app.processEvents()
+    baseline_widgets = len(app.allWidgets())
+    cycle = 0
+
+    def step() -> float:
+        nonlocal cycle
+        cycle += 1
+        clock = time.perf_counter()
+        window = MainWindow(config)
+        window.show()
+        app.processEvents()
+        if args.plant_window:
+            _HELD_WINDOWS.append(window)
+        reference = weakref.ref(window)
+        window.hide()
+        window.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        app.processEvents()
+        del window
+        gc.collect()
+        app.processEvents()
+
+        survivor = reference()
+        if survivor is not None:
+            valid = shiboken6.isValid(survivor)
+            raise SystemExit(
+                f"Qt window wrapper survived cycle {cycle} (C++ valid={valid})"
+            )
+        widgets = len(app.allWidgets())
+        if widgets > baseline_widgets:
+            raise SystemExit(
+                f"Qt widget count grew at cycle {cycle}: "
+                f"{baseline_widgets} -> {widgets}"
+            )
+        return (time.perf_counter() - clock) * 1000
+
+    series, baseline = _measure(args, step)
+    return _finish(series, baseline, args)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cycles", type=int, default=100, help="measured cycles")
     parser.add_argument("--warmup", type=int, default=10, help="warm-up cycles")
     parser.add_argument("--repos", type=int, default=4, help="fixture repositories")
     parser.add_argument("--mode", choices=("status", "sync"), default="status")
+    parser.add_argument("--qt", action="store_true", help="soak window create/close")
     parser.add_argument("--plant-leak", action="store_true", help="add a known leak")
+    parser.add_argument(
+        "--plant-window", action="store_true", help="hold one Qt window per cycle"
+    )
     parser.add_argument("--keep", action="store_true", help="keep the work directory")
     parser.add_argument("--verbose", action="store_true", help="print every cycle")
     parser.add_argument("--rss-limit-mb", type=float, default=5.0)
@@ -366,6 +498,10 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("git is required")
     if not Path("/proc/self/status").is_file():
         parser.error("this harness needs Linux /proc")
+    if args.qt:
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    elif args.plant_window:
+        parser.error("--plant-window requires --qt")
 
     workdir = Path(tempfile.mkdtemp(prefix="repopull-soak-"))
     try:
@@ -386,57 +522,19 @@ def main(argv: list[str] | None = None) -> int:
             log_retention_days=0,
         )
 
+        label = "Qt windows" if args.qt else f"{args.mode} cycles"
         print(
-            f"repopull soak: {args.repos} repos, {args.mode}, "
+            f"repopull soak: {args.repos} repos, {label}, "
             f"{args.warmup} warm-up + {args.cycles} measured cycles"
         )
         if args.plant_leak:
             print("planted leak: 64 KiB per cycle")
+        if args.plant_window:
+            print("planted window leak: one held window per cycle")
 
-        tracemalloc.start(1)
-        series = Series()
-        baseline: tracemalloc.Snapshot | None = None
-        total = args.warmup + args.cycles
-        for index in range(total):
-            clock = time.perf_counter()
-            _run_cycle(config, args.mode)
-            elapsed_ms = (time.perf_counter() - clock) * 1000
-            if args.plant_leak:
-                _LEAKED.append(b"x" * PLANT_BYTES)
-            if index < args.warmup:
-                continue
-            if baseline is None:
-                baseline = tracemalloc.take_snapshot()
-            sample = _sample(index - args.warmup + 1, elapsed_ms)
-            series.add(sample)
-            if args.verbose or series.count == 1 or series.count % 10 == 0:
-                if series.count == 1:
-                    _print_header()
-                _print_sample(sample)
-
-        findings = series.findings(
-            rss_limit_mb=args.rss_limit_mb,
-            fd_limit=args.fd_limit,
-            thread_limit=args.thread_limit,
-            trace_limit_kb=args.trace_limit_kb,
-        )
-
-        print()
-        for finding in findings:
-            print(finding.line())
-
-        failures = [finding for finding in findings if not finding.ok]
-        if failures:
-            assert baseline is not None
-            print("\ntop Python allocations since the last warm-up cycle:")
-            final = tracemalloc.take_snapshot()
-            for stat in final.compare_to(baseline, "lineno")[:8]:
-                print(f"  {stat}")
-            print(f"\nresult: FAIL ({len(failures)} metric(s) over limit)")
-            return 1
-
-        print("\nresult: PASS")
-        return 0
+        if args.qt:
+            return _soak_qt(config, args)
+        return _soak_cli(config, args)
     finally:
         tracemalloc.stop()
         if args.keep:

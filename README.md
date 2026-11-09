@@ -246,7 +246,7 @@ auto_refresh_pause_when_hidden = false
 | `docs/` | Architecture, configuration, GUI, packaging, branding, design rationale, test audit. |
 | `docs/previews/` | Screenshots used in the docs. |
 | `tests/` | Unit and integration tests (throwaway git repos). |
-| `tools/` | Development-only soak harness (`make soak`). |
+| `tools/` | Development-only soak harness (`make soak`, `make soak-qt`). |
 | `workflows/` | The loop spec this tool implements. |
 | `NOTES.md` | Original 2026-11-05 survey of the watched world and terminology. |
 | `Makefile` | `make test`, `make typecheck`, `make gui`, `make appimage`. |
@@ -257,7 +257,8 @@ auto_refresh_pause_when_hidden = false
 make test        # unit and integration tests, offline, uses temp repos
 make typecheck   # mypy --strict
 make check       # both
-make soak        # resource soak against throwaway local repos
+make soak        # CLI resource soak against throwaway local repos
+make soak-qt     # Qt window create/close soak
 make gui         # launch the optional PySide6 interface
 make appimage    # build dist/repopull-0.5.1-x86_64.AppImage
 make bump        # increment the patch version
