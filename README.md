@@ -22,7 +22,7 @@ covers the 0.4.13 tree at 224 tests; 0.4.14 added one GUI padding test,
 0.4.15 added 12 root-state tests, 0.4.16 added 12, 0.5.0 added 15 for
 per-repository holds, row labels, Open folder, and Next check (264 at that
 release), and 0.5.1 adds 2 scroll-position tests (266 at that release). 0.5.2
-adds the soak harness and hardening tests (284 current).
+adds the soak harness and hardening tests (284 at that release; 287 now).
 The 16 px icon keeps its branches at the cost of softness (see
 [branding](docs/branding.md)).
 
