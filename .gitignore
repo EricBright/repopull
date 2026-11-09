@@ -1,12 +1,39 @@
+# Python bytecode and test/type caches
 __pycache__/
 *.py[cod]
-*.egg-info/
 .mypy_cache/
 .pytest_cache/
-logs/
+
+# Virtualenvs and per-tool caches
+.venv/
+venv/
+.mypy-venv/
+.uv-cache/
+
+# Build output and local packages
 build/
 dist/
-_temp/
-config.toml
+*.egg-info/
 
+# Local runtime data. Never commit a watched folder or a run history.
+config.toml
 ui-state.json
+logs/
+*.log
+
+# Local scratch space
+_temp/
+.scratch/
+
+# Editors and operating-system metadata
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak

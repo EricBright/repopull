@@ -1,5 +1,7 @@
 # Limitations
 
+- Runs on Linux: the CLI takes its run lock with `fcntl.flock` and reads
+  `/proc/self/mountinfo` for root identity, and the GUI targets Linux desktops.
 - Does not clone missing repositories; it only syncs what exists.
 - Does not switch local branches or fast-forward any local branch other than the
   current tracking branch. A normal `git fetch` still updates the remote's

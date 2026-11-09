@@ -9,7 +9,7 @@ used.
 
 - `dev`, `main`, and `stable` are aligned on 0.4.3; remote `main` contains the
   follow-up documentation commit.
-- Tag/release: `v0.4.3` (`b099ea1`), private and latest.
+- Tag/release: `v0.4.3` (`b099ea1`), the latest release at the time.
 - 119 tests; mypy clean on 21 files; GitHub Actions CI green.
 - Local AppImage: `dist/repopull-0.4.3-x86_64.AppImage`,
   SHA-256 `26e5f40a4ef65059b095aa25bd7fdfb1d20b39a89d9f2c6ca6e0737806872045`;
@@ -31,7 +31,7 @@ used.
 2. **Policy/config:** refresh module, config fields, clamp, scheduler, tests.
 3. **Settings/tray:** Background & refresh controls, symbolic asset, tray,
    close-to-tray, availability fallback, tests/docs.
-4. **Verify/release:** soak, CI, AppImage, 0.4.0, private release.
+4. **Verify/release:** soak, CI, AppImage, 0.4.0, release.
 
 ## Out of scope
 

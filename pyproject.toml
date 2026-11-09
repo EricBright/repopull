@@ -8,7 +8,27 @@ version = "0.5.1"
 description = "Keep local mirrors of watched third-party repositories current with their remotes."
 readme = "README.md"
 requires-python = ">=3.11"
+license = "AGPL-3.0-only"
+license-files = ["LICENSE"]
+authors = [{ name = "Eric Bright" }]
+keywords = ["git", "mirror", "pull", "repository", "sync"]
+classifiers = [
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: Developers",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Version Control :: Git",
+    "Topic :: Utilities",
+]
 dependencies = []
+
+[project.urls]
+Repository = "https://github.com/EricBright/repopull"
+Issues = "https://github.com/EricBright/repopull/issues"
+Changelog = "https://github.com/EricBright/repopull/blob/main/CHANGELOG.md"
 
 [project.scripts]
 repopull = "repopull.cli:main"

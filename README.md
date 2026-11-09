@@ -10,6 +10,9 @@ safely, politely, and without ever touching the remotes.
 
 The app watches a folder of remote third-party repositories. Then it discovers them, fetches each remote **one at a time**, fast-forwards what can be fast-forwarded, and tells you exactly what happened. It never pushes, commits, branches, tags, or opens a pull request.
 
+**Requirements:** Linux, Python 3.11+, and `git`. The CLI needs no third-party
+packages; the optional GUI needs PySide6, and the AppImage (x86_64) bundles both.
+
 ## Status
 
 **Current release: 0.5.1.** Tests and mypy pass; the latest AppImage was built

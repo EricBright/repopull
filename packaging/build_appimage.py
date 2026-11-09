@@ -123,6 +123,13 @@ def main() -> None:
             raise SystemExit(f"python-appimage produced no AppDir in {stage}")
         appdir = candidates[0]
 
+        # pip records the local wheel path here; it must not ship in a public
+        # build because it exposes the builder's home layout.
+        for direct_url in appdir.glob(
+            "opt/python*/lib/python*/site-packages/repopull-*.dist-info/direct_url.json"
+        ):
+            direct_url.unlink(missing_ok=True)
+
         apprun = appdir / "AppRun"
         apprun.unlink(missing_ok=True)
         shutil.copy2(PACKAGING / "AppRun", apprun)
