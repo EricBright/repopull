@@ -65,6 +65,10 @@ restored; a detail page is restored only if that repository is still present.
   that the remote has not moved since; the next check replaces it. A force sync
   shows `hard reset to upstream at last sync` instead of a pulled count.
 
+- **Clone…** in the library header asks for a repository URL and a new folder
+  name, shows the exact destination, and clones in the background with Cancel.
+  Existing folders are never overwritten. Private remotes need an SSH agent or
+  a credential helper because repopull never prompts.
 - **Banner**: "N repositories can be updated" with a **Sync these** button.
   When some behind repositories are held out of Sync all, the banner reads
   "N can be updated · M held" and the button updates only the N.

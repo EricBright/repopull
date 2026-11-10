@@ -9,8 +9,9 @@ between discovery, git access, decision-making, and presentation.
 |---|---|
 | `models.py` | Frozen dataclasses: `RepoRef`, `RepoState`, `Row`, `Report`, `Outcome`. |
 | `config.py` | TOML loading, validation, defaults, path resolution, and per-repository bulk-action holds. |
-| `discovery.py` | Finds `.git` directories at depth 1–2, applies ignore globs. |
+| `discovery.py` | Finds `.git` directories at depth 1–2, applies ignore globs, skips clone work-in-progress. |
 | `git.py` | Typed wrappers around the git CLI; the only place that spawns processes. |
+| `clone.py` | Validates a clone address and folder name, clones into a temporary folder, then renames it into place. |
 | `sync.py` | Inspection, fetching, classification, and applying updates. |
 | `refresh.py` | Pure automatic-refresh policy: interval clamping, delays, backoff, suspend detection, and the GUI decision table. |
 | `report.py` | Table rendering, log persistence, JSON serialization. |
@@ -125,12 +126,18 @@ writing a separate JSON file.
   build bare remotes and clones in temporary directories: fast-forward, dirty
   skip, divergence, force reset, untracked files, missing tracking config, LFS
   skip, empty clone, and status-is-read-only.
-- `tests/test_discovery.py` — nested discovery, ignore globs, depth limits.
+- `tests/test_discovery.py` — nested discovery, ignore globs, depth limits,
+  clone temporary folders.
+- `tests/test_clone.py` — URL and folder-name validation, local and empty
+  remotes, failed/cancelled cleanup, and discovery of a partial clone.
 - `tests/test_config.py`, `tests/test_report.py`, `tests/test_models.py`,
   `tests/test_runtime.py` — config round-trip, report JSON/render, model
   predicates/counts, run lock.
 - `tests/test_diagnostics.py`, `tests/test_cli.py`, `tests/test_gui.py` —
   path/root advice, CLI exit paths, offscreen GUI.
+- `tests/test_gui_clone.py` — Clone dialog validation, background task signals,
+  busy state, and close-while-cloning.
+- `tests/test_packaging.py` — AppImage trim policy and the source-import guard.
 - `tests/test_refresh.py` — interval clamps, delay/backoff, suspend detection,
   and the pure automatic-refresh decision table.
 - `tests/test_mounts.py`, `tests/test_rootstate.py`, `tests/test_uistate.py` —

@@ -57,6 +57,7 @@ Command-line flags override the file. `--root` overrides `root`.
 | `exclude_from_sync` | list of strings | `[]` | Exact relative labels held out of **Sync all**, **Sync these**, and bulk CLI/menu syncs. An explicit `--only` selection overrides it. |
 | `fetch_timeout_s` | number ≥ 0 | `300` | Seconds before a `git fetch` is abandoned. Network-level failures are collected and can stop the sweep. |
 | `command_timeout_s` | number ≥ 0 | `120` | Seconds before any other git command is abandoned. |
+| `clone_timeout_s` | number ≥ 0 | `1800` | Seconds before a **Clone…** or `repopull clone` is abandoned. |
 | `delay_between_repos_s` | number ≥ 0 | `0.5` | Pause between consecutive fetches. |
 | `update_submodules` | boolean | `true` | Run `git submodule update --init --recursive` after a successful update. |
 | `require_git_lfs_for_lfs_repos` | boolean | `true` | Skip repos whose tracked `.gitattributes` uses `filter=lfs` when Git LFS is not installed or not enabled (`git lfs install`). |

@@ -14,6 +14,12 @@ import tomllib
 import urllib.request
 from pathlib import Path
 
+try:
+    from trim_appdir import IMAGE_SIZE_CEILING, TrimError, trim_appdir
+except ImportError:  # imported by tests instead of executed as a script
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from trim_appdir import IMAGE_SIZE_CEILING, TrimError, trim_appdir
+
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGING = ROOT / "packaging"
 BUILD = ROOT / "build" / "appimage"
@@ -159,6 +165,35 @@ def main() -> None:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target)
 
+        try:
+            trimmed = trim_appdir(appdir)
+        except TrimError as exc:
+            raise SystemExit(f"AppDir trim failed: {exc}") from exc
+        print(
+            f"Trimmed AppDir to {trimmed.appdir_bytes / 1_000_000:.1f} MB "
+            f"({trimmed.kept_bindings} bindings, "
+            f"{trimmed.kept_libraries} Qt libraries)"
+        )
+
+        notices = appdir / "usr" / "share" / "doc" / "repopull"
+        notices.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(PACKAGING / "THIRD_PARTY_NOTICES.md", notices)
+        licenses = notices / "licenses"
+        licenses.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(
+            PACKAGING / "licenses" / "LGPL-3.0.txt",
+            licenses / "LGPL-3.0.txt",
+        )
+        shutil.copy2(ROOT / "LICENSE", notices / "LICENSE")
+        notices.chmod(0o755)
+        licenses.chmod(0o755)
+        for path in (
+            notices / "THIRD_PARTY_NOTICES.md",
+            licenses / "LGPL-3.0.txt",
+            notices / "LICENSE",
+        ):
+            path.chmod(0o644)
+
         output = ROOT / "dist"
         output.mkdir(exist_ok=True)
         image = output / f"repopull-{version}-x86_64.AppImage"
@@ -177,10 +212,20 @@ def main() -> None:
             str(staged_image),
             cwd=stage,
         )
+        size = staged_image.stat().st_size
+        if size > IMAGE_SIZE_CEILING:
+            raise SystemExit(
+                f"{image.name} is {size / 1_000_000:.1f} MB, above the "
+                f"{IMAGE_SIZE_CEILING / 1_000_000:.0f} MB ceiling. Review "
+                "packaging/trim_appdir.py or raise the ceiling deliberately."
+            )
         staged_image.replace(image)
         image.chmod(0o755)
 
     smoke_home = BUILD / "smoke-home"
+    # A previous build's root-state file would make the smoke test refuse the
+    # root after a remount, so each build starts with a clean home.
+    shutil.rmtree(smoke_home, ignore_errors=True)
     smoke_env = dict(
         os.environ,
         QT_QPA_PLATFORM="offscreen",
@@ -222,7 +267,7 @@ def main() -> None:
     with image.open("rb") as source:
         digest = hashlib.file_digest(source, "sha256").hexdigest()
     (output / "SHA256SUMS.txt").write_text(f"{digest}  {image.name}\n")
-    print(f"Built {image}")
+    print(f"Built {image} ({size / 1_000_000:.1f} MB)")
 
 
 if __name__ == "__main__":

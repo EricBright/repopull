@@ -12,6 +12,9 @@ from repopull.models import RepoRef
 
 MIN_FREE_BYTES = 64 * 1024 * 1024
 
+CLONE_TEMP_PREFIX = ".repopull-clone-"
+"""A clone in progress lives under this prefix and is never discovered."""
+
 
 class DiscoveryError(RuntimeError):
     """Raised when the watched root cannot be scanned."""
@@ -35,7 +38,8 @@ def discover_repos(
 
     A directory counts as a repository when it contains `.git`, either as a
     directory (normal clone) or as a file (linked worktree). Discovery never
-    descends into a repository and never follows symlinked directories.
+    descends into a repository, never follows symlinked directories, and
+    ignores the temporary folders used while `repopull clone` is running.
     """
     if not root.exists():
         raise DiscoveryError(f"watched root does not exist: {root}")
@@ -64,11 +68,17 @@ def discover_repos(
             dirnames[:] = sorted(
                 name
                 for name in dirnames
-                if name != ".git" and not _ignored(name, name, ignore)
+                if name != ".git"
+                and not name.startswith(CLONE_TEMP_PREFIX)
+                and not _ignored(name, name, ignore)
             )
             continue
 
         if depth > max_depth:
+            dirnames[:] = []
+            continue
+
+        if current.name.startswith(CLONE_TEMP_PREFIX):
             dirnames[:] = []
             continue
 

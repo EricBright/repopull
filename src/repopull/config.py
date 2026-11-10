@@ -24,6 +24,7 @@ _KNOWN_KEYS: Final[frozenset[str]] = frozenset(
         "exclude_from_sync",
         "fetch_timeout_s",
         "command_timeout_s",
+        "clone_timeout_s",
         "delay_between_repos_s",
         "update_submodules",
         "require_git_lfs_for_lfs_repos",
@@ -64,6 +65,7 @@ class Config:
     exclude_from_sync: tuple[str, ...] = ()
     fetch_timeout_s: float = 300.0
     command_timeout_s: float = 120.0
+    clone_timeout_s: float = 1800.0
     delay_between_repos_s: float = 0.5
     update_submodules: bool = True
     require_git_lfs_for_lfs_repos: bool = True
@@ -212,6 +214,9 @@ def load_config(
             ),
             command_timeout_s=_as_float(
                 data.get("command_timeout_s", 120.0), "command_timeout_s"
+            ),
+            clone_timeout_s=_as_float(
+                data.get("clone_timeout_s", 1800.0), "clone_timeout_s"
             ),
             delay_between_repos_s=_as_float(
                 data.get("delay_between_repos_s", 0.5), "delay_between_repos_s"

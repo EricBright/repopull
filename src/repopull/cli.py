@@ -11,6 +11,13 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from repopull import __version__
+from repopull.clone import (
+    CloneError,
+    clone_repository,
+    derive_name,
+    validate_name,
+    validate_url,
+)
 from repopull.config import Config, ConfigError, load_config
 from repopull.diagnostics import (
     describe_paths,
@@ -72,6 +79,17 @@ def _build_command_parser() -> argparse.ArgumentParser:
     sub.add_parser("list", help="list discovered repositories")
     sub.add_parser(
         "where", help="show the config file, the watched root, and whether they exist"
+    )
+    clone = sub.add_parser(
+        "clone", help="clone one repository into the watched folder"
+    )
+    clone.add_argument("url", help="repository URL or local path")
+    clone.add_argument("--name", help="folder name (default: derived from the URL)")
+    clone.add_argument(
+        "--timeout",
+        type=float,
+        default=None,
+        help="seconds before the clone is abandoned",
     )
     repair = sub.add_parser(
         "repair-root",
@@ -245,6 +263,48 @@ def _repair_root(config: Config, *, assume_yes: bool) -> int:
     return 0
 
 
+def _clone(
+    config: Config,
+    url: str,
+    name: str | None,
+    timeout: float | None,
+) -> int:
+    """Clone one repository into the watched folder."""
+    if config.root is None:
+        print("repopull: no watched folder configured", file=sys.stderr)
+        print(missing_root_advice(config), file=sys.stderr)
+        return 2
+    if timeout is not None and timeout <= 0:
+        return _fail("--timeout must be greater than zero")
+    try:
+        address = validate_url(url)
+        folder = validate_name(name if name is not None else derive_name(address))
+    except CloneError as exc:
+        return _fail(str(exc))
+
+    problem = check_log_dir(config.log_dir)
+    if problem is not None:
+        return _fail(problem)
+    try:
+        with run_lock(config.log_dir):
+            result = clone_repository(
+                address,
+                folder,
+                config.root,
+                timeout=(
+                    timeout if timeout is not None else config.clone_timeout_s
+                ),
+            )
+    except LockError as exc:
+        return _fail(str(exc))
+    except CloneError as exc:
+        return _fail(str(exc))
+    print(f"Cloned into {result.destination}")
+    if result.empty:
+        print("The remote has no commits yet.")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run repopull and return a process exit code."""
     raw = list(sys.argv[1:] if argv is None else argv)
@@ -282,6 +342,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "where":
         print(describe_paths(config))
         return 0
+
+    if args.command == "clone":
+        return _clone(config, args.url, args.name, args.timeout)
 
     if args.command == "repair-root":
         problem = check_log_dir(config.log_dir)

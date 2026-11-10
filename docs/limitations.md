@@ -5,7 +5,14 @@
 - A SIGKILL of repopull may leave a process that `git` forked, such as a remote
   helper. Timeout and cancellation kill the whole process group; only a SIGKILL
   of repopull itself is outside that path.
-- Does not clone missing repositories; it only syncs what exists.
+- Clone needs a non-interactive address: public HTTPS repositories work, while
+  private ones need an SSH agent or a configured credential helper because
+  repopull never prompts. A remote that requires a password fails.
+- Clone is bounded by `clone_timeout_s` (default 30 minutes); very large
+  repositories need a higher value or the CLI. Submodules initialize on the
+  first sync, not during the clone.
+- Clone creates one new folder; it cannot replace an existing repository or
+  clone several repositories at once.
 - Does not switch local branches or fast-forward any local branch other than the
   current tracking branch. A normal `git fetch` still updates the remote's
   configured remote-tracking refs.

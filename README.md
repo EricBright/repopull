@@ -15,18 +15,16 @@ packages; the optional GUI needs PySide6, and the AppImage (x86_64) bundles both
 
 ## Status
 
-**Current release: 0.5.2.** Tests and mypy pass; the latest AppImage was built
-from the 0.5.2 tree. No release blockers. The repository has post-release
-commits (an X11 desktop hint and an automated local-link test); no 0.5.3 has
-been cut. The historical
+**Current release: 0.6.0.** Tests and mypy pass. The 0.6.0 AppImage is about
+half the previous download (95 MB → 46 MB), and adds a Clone button for new
+remotes. The historical
 [test audit](docs/test-falsifiability.md) covers 0.2.3; a 2026-11-07 re-audit
 covers the 0.4.13 tree at 224 tests; 0.4.14 added one GUI padding test,
 0.4.15 added 12 root-state tests, 0.4.16 added 12, 0.5.0 added 15 for
 per-repository holds, row labels, Open folder, and Next check (264 at that
 release), and 0.5.1 adds 2 scroll-position tests (266 at that release). 0.5.2
-adds the soak harness and hardening tests (284 at that release; 287 now).
-The 16 px icon keeps its branches at the cost of softness (see
-[branding](docs/branding.md)).
+adds the soak harness and hardening tests (284 at that release); 0.6.0 adds 32
+(319 now).
 
 ## The problem the app tries to address
 
@@ -109,6 +107,7 @@ scriptable. Automatic status refresh is GUI-only and never syncs.
 ./repopull.sh sync --only AppGlider --only fieldcraft
 ./repopull.sh sync --force --only fieldcraft         # hard reset, explicit
 ./repopull.sh repair-root                            # preview saved/current disk identity
+./repopull.sh clone https://github.com/owner/repo.git  # new mirror folder
 ./repopull.sh report                                 # last brief
 ./repopull.sh --json status                          # machine-readable
 ```
@@ -128,8 +127,9 @@ The GUI reads the same `config.toml`, repositories, and `logs/latest.json` as th
 CLI. It shows one row per repo with a state chip and counts in the subtitle,
 updates each row as the sweep progresses, supports Refresh status, Sync all, and
 a detail page with **Open folder** and per-repo bulk-action holds alongside
-Force sync. Settings are grouped into Watching, Refresh, Network, Updates, and
-Storage sections. See [docs/gui.md](docs/gui.md).
+Force sync. **Clone…** adds a new repository from a URL. Settings are grouped
+into Watching, Refresh, Network, Updates, and Storage sections. See
+[docs/gui.md](docs/gui.md).
 
 Settings → Refresh can keep repopull in the system tray and refresh status
 automatically. Auto-refresh is off by default, status-only, never runs more
@@ -151,14 +151,14 @@ importable, otherwise it lets `uv` provide it for that run.
 
 ```bash
 make appimage
-./dist/repopull-0.5.2-x86_64.AppImage
+./dist/repopull-0.6.0-x86_64.AppImage
 ```
 
 The image bundles Python 3.13, PySide6 and repopull. Run the CLI from it with
 `--cli`:
 
 ```bash
-./dist/repopull-0.5.2-x86_64.AppImage --cli status
+./dist/repopull-0.6.0-x86_64.AppImage --cli status
 ```
 
 It keeps `config.toml` and logs in `~/.config/repopull` (or `$REPOPULL_HOME`).
@@ -184,6 +184,8 @@ Hard rules:
 - Never run `git clean`; untracked build artefacts survive every run.
 - Never check out an LFS repo when Git LFS is not ready (binary missing or
   filters not enabled); that would replace real files with pointer text.
+- Clone only creates a new folder; it never overwrites an existing one or
+  writes into a repository that is already watched.
 - One run at a time, enforced with an `flock`.
 
 Force sync always asks for confirmation in the menu and prints exactly which repos
@@ -263,7 +265,7 @@ make audit       # check packaging pins against known advisories
 make soak        # CLI resource soak against throwaway local repos
 make soak-qt     # Qt window create/close soak
 make gui         # launch the optional PySide6 interface
-make appimage    # build dist/repopull-0.5.2-x86_64.AppImage
+make appimage    # build dist/repopull-0.6.0-x86_64.AppImage
 make bump        # increment the patch version
 make release     # check, bump the patch, build the AppImage
 ```

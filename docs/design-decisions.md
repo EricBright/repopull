@@ -585,4 +585,48 @@ replace a newer state. A real concurrent change requires one retry. A writer
 that loses the race leaves a complete, readable state behind. See
 [hardening-backlog.md](hardening-backlog.md).
 
+## 37. Bundle only the Qt modules the app imports
+
+**Context:** The AppImage shipped every module in the PySide6-Essentials wheel.
+That wheel is built for all Qt applications, so it carried QML, Quick, Designer,
+type stubs, the bundled pip, and Tk/SQLite from the Python base. The download was
+95 MB, about twice AppGlider's 47 MB, even though repopull imports only QtCore,
+QtGui and QtWidgets.
+
+**Decision:** The build trims the staged AppDir before packing. It deletes a
+fixed list of known-unused trees, keeps the three imported bindings, and walks
+the ELF `NEEDED` entries of the retained bindings and plugins to keep exactly the
+Qt shared libraries they load. A missing Qt dependency stops the build. Platform
+plugins for X11, Wayland, offscreen and minimal stay. The build refuses an image
+above 60 MB. A test compares the keep-list with the Qt modules imported under
+`src/`, so a new module fails the suite until the trim is updated.
+
+**Consequences:** The AppImage is about 46 MB instead of 95 MB, with no change in
+behaviour; all 43 local repositories render under Wayland, X11 and offscreen.
+The cost is a build step that must be revisited when a new Qt module is used,
+which the import test makes loud. The trim is an independent implementation,
+not a copy of AppGlider's GPL code. Third-party notices and the LGPL text ship
+inside the image.
+
+## 38. Clone creates a new folder and nothing else
+
+**Context:** Decision 1 keeps repopull pull-only, but a fresh machine or a new
+upstream still needs its first copy. Telling the user to run `git clone` by hand
+breaks the "one window" workflow and bypasses the app's safety checks.
+
+**Decision:** There is exactly one write path, **Clone…** / `repopull clone`. It
+accepts only http(s), ssh, git, file or local-path addresses; rejects `ext::`
+and unknown transports, option-like URLs, path separators and traversal in the
+folder name; and clones into a hidden `.repopull-clone-*` folder that discovery
+ignores. On success it renames the finished checkout into the requested name; on
+failure or cancellation it removes the temporary folder. An existing name is
+never overwritten. The clone takes the same run lock as sync, runs without
+credential prompts, and is bounded by `clone_timeout_s`.
+
+**Consequences:** A first mirror can be created without leaving the app, and an
+interrupted clone never appears as a broken repository. Existing repositories
+are still never written to, so the pull-only guarantee holds. Private remotes
+need an SSH agent or credential helper, and submodules initialize on the first
+sync rather than during the clone.
+
 For the full documentation index, see [README.md](../README.md#documentation-index).

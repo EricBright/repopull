@@ -38,24 +38,29 @@ Action 5 adds CI guardrails. `make test` runs under `-X dev -X faulthandler
 update and pin policy is in [packaging.md](packaging.md#updates-and-dependency-checks).
 The Rust decision remains gated and no Rust is built.
 
-## Current state and next session (2026-11-09)
+## Current state and next session (2026-11-10)
 
-- **Release:** 0.5.2, tag `v0.5.2` at `325e082`; AppImage SHA-256
-  `92c8b36792fba5ff5c0587a39b1ed0bb37278ae0186db9f28db7f7c3493bc348`.
-- **Post-release commits:** `81a7d35` sets `StartupWMClass` in the desktop
-  entry, `35c0831` comments it, `8034463` automates local Markdown link checks,
-  and this handoff update follows. Run `git log v0.5.2..main` for the exact
-  list.
-- **No 0.5.3 has been cut.** Hold unless the X11 hint must ship in a binary;
-  otherwise it rides with the next release.
-- **Checks:** 287 tests (284 at the 0.5.2 release), mypy strict clean,
-  `make audit` clean, CI green.
-- **Hardening:** all five actions done. Known gaps are at the end of this file.
-- **Possible next work:** a 3.11 CI leg (the package declares 3.11+ but CI
-  tests 3.13), or a release only when there is user-facing work. Run the
-  documentation protocol on structural changes, not after every edit.
-- **Resume with:** `make check` and `make audit`; read [README.md](../README.md)
-  for the current release and entry points.
+- **Release:** 0.6.0, tag `v0.6.0`;
+  <https://github.com/EricBright/repopull/releases/tag/v0.6.0>. The tree has the
+  AppDir trim (95 MB → 46 MB), **Clone…**, third-party notices, and 32 new
+  tests.
+- **AppImage:** `dist/repopull-0.6.0-x86_64.AppImage`, 45,857,272 bytes,
+  SHA-256 `5eb630524d8f0e66078e6387262bf764696574bef27a51cacbd8097fdb7f2375`.
+  Verified on Wayland, X11 and offscreen with 43 rows; the packaged CLI cloned
+  a local bare remote into a clean folder.
+- **Checks:** 319 tests (287 at 0.5.2), 1 expected failure, mypy strict clean,
+  `make audit` clean. README is 1,995 words.
+- **Trim:** `packaging/trim_appdir.py`; the keep-list is tied to `src/` imports
+  by `tests/test_packaging.py`, and the build refuses images over 60 MB. The
+  step is an independent implementation, not AppGlider code.
+- **Clone:** `repopull clone URL [--name NAME]` plus the library button/dialog.
+  Temporary `.repopull-clone-*` folders are invisible to discovery; existing
+  folders are never overwritten; `ext::` is rejected; `clone_timeout_s`
+  defaults to 1800.
+- **Next:** possible follow-ups: a 3.11 CI leg, streaming clone progress, and a
+  shell-completion pass.
+- **Resume with:** `make check`, `make audit`, then `make appimage` if the
+  image needs rebuilding.
 
 ## Language decision: Python first; no Rust wrappers
 

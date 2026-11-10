@@ -1,9 +1,10 @@
 # Packaging as an AppImage
 
-`make appimage` builds `dist/repopull-0.5.2-x86_64.AppImage`: a single file with
+`make appimage` builds `dist/repopull-0.6.0-x86_64.AppImage`: a single file with
 a bundled Python 3.13, PySide6 and `repopull`. It follows the same approach as
 AppGlider — `python-appimage` stages the AppDir, then a pinned `appimagetool`
-packs it.
+packs it. The staged AppDir is trimmed to the Qt modules repopull imports, so
+the download is about 46 MB instead of 95 MB.
 
 ## Requirements
 
@@ -12,6 +13,7 @@ packs it.
 - Network access (downloads the pinned base image, appimagetool, runtime and
   PySide6).
 - `python3 -m venv` and `pip`; the Makefile creates `build/packaging-env`.
+- `readelf` from binutils; the trim follows ELF dependencies.
 - Host `git` at runtime. The AppImage bundles Python and Qt, not git.
 
 ## Build
@@ -21,20 +23,44 @@ make appimage
 ```
 
 The script downloads pinned inputs into `build/downloads/`, builds the wheel,
-stages the AppDir, replaces `AppRun`, packs the image, and runs two smoke tests
-(GUI offscreen and `--cli version`). Output:
+stages the AppDir, replaces `AppRun`, trims the AppDir, adds the licence
+notices, packs the image, and runs two smoke tests (GUI offscreen and
+`--cli version`). Output:
 
 ```
-dist/repopull-0.5.2-x86_64.AppImage
+dist/repopull-0.6.0-x86_64.AppImage
 dist/SHA256SUMS.txt
 ```
+
+## Trimming the AppDir
+
+`python-appimage` installs the complete PySide6-Essentials wheel, which is built
+for every Qt application. `packaging/trim_appdir.py` removes the parts repopull
+cannot reach:
+
+- QML, Quick, Designer and their plugins, tools and QML assets;
+- the bundled `pip`, type stubs, headers, build glue and documentation;
+- Python's Tk, IDLE, turtle demos, SQLite and the matching shared libraries;
+- Qt translations other than the `qtbase_*` and `qt_*` catalogues.
+
+It then keeps only the `QtCore`, `QtGui` and `QtWidgets` Python bindings and
+follows their ELF `NEEDED` entries (plus those of the retained plugins) to keep
+exactly the Qt shared libraries they load. If a retained file needs a Qt library
+that is missing, the build stops rather than producing an image that only starts
+on the build machine. Platform plugins for X11, Wayland, offscreen and minimal
+are kept; the build also refuses any image above 60 MB.
+
+`tests/test_packaging.py` ties the keep-list to the Qt modules imported under
+`src/`, so adding a new Qt module to the app fails the suite until the trim is
+updated. The trim is written for repopull; it does not copy AppGlider's GPL
+code.
 
 ## Run
 
 ```bash
-./dist/repopull-0.5.2-x86_64.AppImage                  # GUI
-./dist/repopull-0.5.2-x86_64.AppImage --cli status
-./dist/repopull-0.5.2-x86_64.AppImage --cli sync --only 'craft-*'
+./dist/repopull-0.6.0-x86_64.AppImage                  # GUI
+./dist/repopull-0.6.0-x86_64.AppImage --cli status
+./dist/repopull-0.6.0-x86_64.AppImage --cli sync --only 'craft-*'
 ```
 
 If FUSE is unavailable, add `--appimage-extract-and-run`.
@@ -105,6 +131,9 @@ pins PySide6 and certifi. Change them deliberately.
 | `packaging/repopull.png` | 256×256 AppImage/desktop icon |
 | `packaging/make_icon.py` | Regenerates the icon family; see branding.md |
 | `packaging/build_appimage.py` | Build orchestration |
+| `packaging/trim_appdir.py` | AppDir trim policy and ELF dependency walk |
+| `packaging/THIRD_PARTY_NOTICES.md` | Bundled-component notices copied into the image |
+| `packaging/licenses/LGPL-3.0.txt` | LGPL text for PySide6/Qt |
 | `packaging/downloads.json` | Pinned build inputs |
 | `packaging/runtime-requirements.txt` | Bundled Python packages |
 | `packaging/build-requirements.txt` | Build-time Python package |
@@ -116,6 +145,11 @@ assets.
 ## Licensing
 
 AppGlider is GPL-3.0-or-later. This packaging is a separate implementation that
-uses the same public tools (`python-appimage`, `appimagetool`); it does not copy
-AppGlider's code.
+uses the same public tools (`python-appimage`, `appimagetool`) and an
+independently written trim step; it does not copy AppGlider's code.
+
+The image carries `usr/share/doc/repopull/THIRD_PARTY_NOTICES.md`, the
+LGPL-3.0 text and repopull's own licence. Qt is bundled unmodified as shared
+libraries, and the build inputs and scripts are public, so the image can be
+inspected or relinked.
 For the full documentation index, see [README.md](../README.md#documentation-index).

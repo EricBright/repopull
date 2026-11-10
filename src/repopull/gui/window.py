@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
     QCheckBox,
+    QDialog,
     QDoubleSpinBox,
     QFileDialog,
     QFrame,
@@ -59,6 +60,7 @@ from PySide6.QtWidgets import (
 )
 
 from repopull import __version__, git
+from repopull.clone import CloneResult
 from repopull.config import (
     Config,
     ConfigError,
@@ -70,7 +72,8 @@ from repopull.config import (
 )
 from repopull.discovery import DiscoveryError, discover_repos
 from repopull.diagnostics import LfsStatus, lfs_status
-from repopull.gui.jobs import RunTask
+from repopull.gui.clone_dialog import CloneDialog
+from repopull.gui.jobs import CloneTask, RunTask
 from repopull.gui.lfs_help import LfsHelpDialog
 from repopull.gui.rows import RepoRow, RowView, row_view, unchecked_view
 from repopull.gui.settings import (
@@ -201,6 +204,7 @@ class MainWindow(QMainWindow):
         )
         self.search = ""
         self.task: RunTask | None = None
+        self.clone_task: CloneTask | None = None
         self._quit_requested = False
         self._loading_settings = False
         self._loading_holds = False
@@ -414,6 +418,14 @@ class MainWindow(QMainWindow):
         self.search_box.setFixedWidth(240)
         self.search_box.textChanged.connect(self._on_search)
         header.addWidget(self.search_box)
+
+        self.clone_button = QPushButton("Clone…")
+        self.clone_button.setObjectName("Ghost")
+        self.clone_button.setToolTip(
+            "Clone a remote repository into the watched folder"
+        )
+        self.clone_button.clicked.connect(self._clone)
+        header.addWidget(self.clone_button)
 
         self.refresh_button = QPushButton("Refresh status")
         self.refresh_button.setToolTip("Fetch every remote without changing a working tree")
@@ -1433,6 +1445,10 @@ class MainWindow(QMainWindow):
                 self.empty_label.setText(self.discovery_error)
             elif self.search:
                 self.empty_label.setText("No repositories match the search.")
+            elif not self.refs:
+                self.empty_label.setText(
+                    "No repositories yet. Use Clone… to add one."
+                )
             else:
                 self.empty_label.setText("No repositories in this view.")
             self.empty_label.show()
@@ -1888,9 +1904,9 @@ class MainWindow(QMainWindow):
             )
         if self._resume_pending:
             return "Checking shortly after resume."
-        if self.task is not None:
+        if self._background_active:
             return (
-                "A status check is running; the next interval starts when it "
+                "A git operation is running; the next interval starts when it "
                 "finishes."
             )
         remaining = self.auto_timer.remainingTime()
@@ -1916,7 +1932,7 @@ class MainWindow(QMainWindow):
             return "Next check — when visible"
         if self._resume_pending:
             return "Next check — after resume"
-        if self.task is not None:
+        if self._background_active:
             return "Next check — after this run"
         remaining = self.auto_timer.remainingTime()
         if remaining < 0:
@@ -2100,6 +2116,93 @@ class MainWindow(QMainWindow):
             ref for ref in self.refs if not self.config.skips_sync(ref.label)
         ]
 
+    @property
+    def _background_active(self) -> bool:
+        """True while a status/sync run or a clone is in flight."""
+        return self.task is not None or self.clone_task is not None
+
+    def _clone(self) -> None:
+        if self._background_active:
+            return
+        if self.config.root is None:
+            self._flash("Choose a watched folder in Settings first.")
+            self._show_settings()
+            return
+        dialog = CloneDialog(self.config.root, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        url, name = dialog.values()
+        self._start_clone(url, name)
+
+    def _start_clone(self, url: str, name: str) -> None:
+        root = self.config.root
+        if root is None or self._background_active:
+            return
+        problem = check_log_dir(self.config.log_dir)
+        if problem is not None:
+            self._flash(problem)
+            return
+        self.auto_timer.stop()
+        self._resume_timer.stop()
+        self._resume_pending = False
+        self._set_busy(True)
+        self.progress.setRange(0, 0)
+        self._flash(f"Cloning {name}…")
+
+        task = CloneTask(
+            url,
+            name,
+            root,
+            timeout=self.config.clone_timeout_s,
+            log_dir=self.config.log_dir,
+        )
+        task.signals.finished.connect(self._on_clone_finished)
+        task.signals.failed.connect(self._on_clone_failed)
+        task.signals.cancelled.connect(self._on_clone_cancelled)
+        self.clone_task = task
+        QThreadPool.globalInstance().start(task)
+
+    def _on_clone_finished(self, result: object) -> None:
+        if not isinstance(result, CloneResult):
+            return
+        self.clone_task = None
+        self._set_busy(False)
+        if result.empty:
+            self._flash(f"Cloned {result.destination.name} (empty repository)")
+        else:
+            self._flash(f"Cloned {result.destination.name}")
+        self._start_discovery(lambda: self._open_cloned(result.destination))
+        self._schedule_auto_refresh()
+        self._maybe_quit_after_task()
+
+    def _open_cloned(self, destination: Path) -> None:
+        root = self.config.root
+        if root is None:
+            return
+        try:
+            label = destination.relative_to(root.resolve()).as_posix()
+        except ValueError:
+            return
+        if any(ref.label == label for ref in self.refs):
+            self._open_detail(label)
+
+    def _on_clone_failed(self, message: str) -> None:
+        self.clone_task = None
+        self._set_busy(False)
+        self._flash("Clone failed")
+        self._schedule_auto_refresh()
+        if self._quit_requested:
+            self._maybe_quit_after_task()
+            return
+        QMessageBox.warning(self, "Clone failed", message)
+
+    def _on_clone_cancelled(self) -> None:
+        self.clone_task = None
+        self._set_busy(False)
+        self._flash("Clone cancelled")
+        self._schedule_auto_refresh()
+        self._maybe_quit_after_task()
+
     def _refresh_status(self) -> None:
         refs = self._status_refs()
         if not refs:
@@ -2176,7 +2279,7 @@ class MainWindow(QMainWindow):
             self.tray.show()
             return
         self._begin_quit()
-        if self.task is not None:
+        if self._background_active:
             event.ignore()
         else:
             event.accept()
@@ -2195,12 +2298,15 @@ class MainWindow(QMainWindow):
         self._check_generation += 1
         self._check_task = None
         if self._quit_requested:
-            if self.task is None:
+            if not self._background_active:
                 self._quit_application()
             return
         self._quit_requested = True
-        if self.task is not None:
-            self.task.cancel.set()
+        if self._background_active:
+            if self.task is not None:
+                self.task.cancel.set()
+            if self.clone_task is not None:
+                self.clone_task.cancel.set()
             self.cancel_button.setEnabled(False)
             self._flash("Stopping the current git command…")
             return
@@ -2306,7 +2412,7 @@ class MainWindow(QMainWindow):
             paused=self._auto_paused,
             window_available=self.isVisible() and not self.isMinimized(),
             pause_when_hidden=self.config.auto_refresh_pause_when_hidden,
-            in_flight=self.task is not None,
+            in_flight=self._background_active,
             has_repos=bool(self.refs),
             network_offline=self._network_offline,
             failures=self._auto_failures,
@@ -2406,7 +2512,7 @@ class MainWindow(QMainWindow):
         ):
             self._resume_pending = False
             return
-        if self.task is not None:
+        if self._background_active:
             # The pre-sleep run is still winding down; let it finish first.
             self._resume_timer.start(15_000)
             return
@@ -2429,7 +2535,7 @@ class MainWindow(QMainWindow):
             or self._resume_pending
         ):
             return
-        if self.task is not None:
+        if self._background_active:
             return
         refs = self._status_refs()
         if not refs:
@@ -2467,7 +2573,7 @@ class MainWindow(QMainWindow):
         mode: str,
         auto: bool = False,
     ) -> None:
-        if self.task is not None:
+        if self._background_active:
             return
         if auto and not self._auto_visible_allowed():
             self._schedule_auto_refresh()
@@ -2523,6 +2629,7 @@ class MainWindow(QMainWindow):
 
     def _set_busy(self, busy: bool) -> None:
         for button in (
+            self.clone_button,
             self.refresh_button,
             self.sync_button,
             self.banner_button,
@@ -2542,6 +2649,11 @@ class MainWindow(QMainWindow):
             self.progress.setValue(0)
 
     def _cancel(self) -> None:
+        if self.clone_task is not None:
+            self.clone_task.cancel.set()
+            self.cancel_button.setEnabled(False)
+            self._flash("Cancelling clone…")
+            return
         if self.task is not None:
             self.task.cancel.set()
             self.cancel_button.setEnabled(False)

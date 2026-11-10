@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.6.0 — 2026-11-10
+
+- Add **Clone…** to the library header and `repopull clone URL [--name NAME]`.
+  It clones into a hidden temporary folder, then renames it into place, so an
+  interrupted clone is never discovered and an existing folder is never
+  overwritten. Only ordinary web, SSH, git, file and local-path addresses are
+  accepted; `ext::` and unknown transports are rejected. Clone runs under the
+  same lock as sync, can be cancelled, and never prompts for credentials.
+- The AppImage is about half its previous size (95 MB → 46 MB). The staged
+  AppDir now drops Qt modules, QML assets, designer tools, type stubs,
+  translations for unused modules, the bundled pip, and Python's Tk/SQLite,
+  then keeps only the Qt shared libraries that the retained bindings and
+  plugins load. A build fails above a 60 MB ceiling, and a test ties the
+  keep-list to the Qt modules repopull imports.
+- The image now ships third-party notices for Python, PySide6/Qt, certifi and
+  OpenSSL, with the LGPL-3.0 text.
+
 ## 0.5.2 — 2026-11-09
 
 - Harden `run_git()` so an exception from `communicate()` still kills and reaps

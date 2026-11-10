@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
+import support
 from repopull.cli import main
 from repopull.models import Outcome, Report, Row
 from repopull.report import write_log
@@ -273,3 +274,109 @@ class RepairRootTests(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertIn("not usable", errors.getvalue())
             self.assertEqual(path.read_text(encoding="utf-8"), "{not json")
+
+
+class CloneCommandTests(unittest.TestCase):
+    def _config(self, base: Path, root: Path) -> Path:
+        path = base / "config.toml"
+        path.write_text(
+            f'root = "{root}"\nlog_dir = "{base / "logs"}"\n',
+            encoding="utf-8",
+        )
+        return path
+
+    def test_clone_creates_the_repository(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            remote, _seed, _watched = support.make_pair(base)
+            root = base / "clone-root"
+            root.mkdir()
+            config_path = self._config(base, root)
+            output = io.StringIO()
+
+            with contextlib.redirect_stdout(output):
+                code = main(
+                    [
+                        "--config",
+                        str(config_path),
+                        "clone",
+                        str(remote),
+                        "--name",
+                        "cloned",
+                    ]
+                )
+
+            self.assertEqual(code, 0)
+            self.assertIn("Cloned into", output.getvalue())
+            self.assertEqual(
+                (root / "cloned" / "file.txt").read_text(encoding="utf-8"),
+                "one\n",
+            )
+
+    def test_clone_rejects_ext_transport(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            root = base / "clone-root"
+            root.mkdir()
+            config_path = self._config(base, root)
+            errors = io.StringIO()
+
+            with contextlib.redirect_stderr(errors):
+                code = main(
+                    [
+                        "--config",
+                        str(config_path),
+                        "clone",
+                        "ext::sh -c touch /tmp/pwned",
+                    ]
+                )
+
+            self.assertEqual(code, 2)
+            self.assertIn("not supported", errors.getvalue())
+            self.assertEqual(list(root.iterdir()), [])
+
+    def test_clone_refuses_an_existing_folder(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            remote, _seed, _watched = support.make_pair(base)
+            root = base / "clone-root"
+            (root / "cloned").mkdir(parents=True)
+            config_path = self._config(base, root)
+            errors = io.StringIO()
+
+            with contextlib.redirect_stderr(errors):
+                code = main(
+                    [
+                        "--config",
+                        str(config_path),
+                        "clone",
+                        str(remote),
+                        "--name",
+                        "cloned",
+                    ]
+                )
+
+            self.assertEqual(code, 2)
+            self.assertIn("already exists", errors.getvalue())
+
+    def test_clone_without_a_watched_folder_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            config_path = base / "config.toml"
+            config_path.write_text(
+                f'log_dir = "{base / "logs"}"\n', encoding="utf-8"
+            )
+            errors = io.StringIO()
+
+            with contextlib.redirect_stderr(errors):
+                code = main(
+                    [
+                        "--config",
+                        str(config_path),
+                        "clone",
+                        "https://example.invalid/owner/repo.git",
+                    ]
+                )
+
+            self.assertEqual(code, 2)
+            self.assertIn("no watched folder", errors.getvalue())
