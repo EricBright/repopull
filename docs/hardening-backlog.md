@@ -40,7 +40,7 @@ The Rust decision remains gated and no Rust is built.
 
 ## Current state and next session (2026-11-10)
 
-- **Release:** 0.6.0, tag `v0.6.0`;
+- **Release:** 0.6.0, tag `v0.6.0` at `b30c7d9`;
   <https://github.com/EricBright/repopull/releases/tag/v0.6.0>. The tree has the
   AppDir trim (95 MB → 46 MB), **Clone…**, third-party notices, and 32 new
   tests.
@@ -49,7 +49,9 @@ The Rust decision remains gated and no Rust is built.
   Verified on Wayland, X11 and offscreen with 43 rows; the packaged CLI cloned
   a local bare remote into a clean folder.
 - **Checks:** 319 tests (287 at 0.5.2), 1 expected failure, mypy strict clean,
-  `make audit` clean. README is 1,995 words.
+  `make audit` clean, README 1,991 words. CI run `42842559225` is green on
+  Python 3.13; it caught a test-only import bug in the first tag, fixed in
+  `b30c7d9`. The AppImage asset did not change.
 - **Trim:** `packaging/trim_appdir.py`; the keep-list is tied to `src/` imports
   by `tests/test_packaging.py`, and the build refuses images over 60 MB. The
   step is an independent implementation, not AppGlider code.
