@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.util
 import re
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -20,6 +21,8 @@ _SPEC = importlib.util.spec_from_file_location(
 )
 assert _SPEC is not None and _SPEC.loader is not None
 trim = importlib.util.module_from_spec(_SPEC)
+# dataclass(slots=True) looks the class's module up in sys.modules on 3.13.
+sys.modules[_SPEC.name] = trim
 _SPEC.loader.exec_module(trim)
 
 
