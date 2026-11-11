@@ -7,13 +7,15 @@ named mutating helpers at the bottom.
 
 from __future__ import annotations
 
+import codecs
 import os
 import re
+import selectors
 import signal
 import shutil
 import subprocess
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
@@ -193,53 +195,14 @@ def _git_env(extra: Mapping[str, str] | None) -> dict[str, str]:
     return env
 
 
-def run_git(
-    repo: Path,
-    *args: str,
+def _wait_captured(
+    process: subprocess.Popen[str],
+    *,
+    command: tuple[str, ...],
     timeout: float,
-    env: Mapping[str, str] | None = None,
-    cancel: Event | None = None,
+    cancel: Event | None,
 ) -> GitResult:
-    """Run `git -C <repo> <args...>` and capture its output."""
-    command = (
-        *_parent_death_launcher(),
-        "git",
-        "-c",
-        "core.hooksPath=/dev/null",
-        "-c",
-        "core.fsmonitor=false",
-        "-C",
-        str(repo),
-        *args,
-    )
-    if cancel is not None and cancel.is_set():
-        return GitResult(
-            args=command,
-            returncode=130,
-            stdout="",
-            stderr="cancelled",
-            timeout_s=timeout,
-            cancelled=True,
-        )
-    try:
-        process = subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            env=_git_env(env),
-            # A new session lets timeout/cancel kill the whole git group. A
-            # SIGKILL of repopull itself is still outside this mechanism.
-            start_new_session=True,
-        )
-    except OSError as exc:
-        return GitResult(
-            args=command,
-            returncode=127,
-            stdout="",
-            stderr=str(exc),
-            timeout_s=timeout,
-        )
+    """Wait for git to exit and collect its output in one piece."""
     deadline = time.monotonic() + timeout
     try:
         while True:
@@ -280,6 +243,164 @@ def run_git(
         stdout=stdout,
         stderr=stderr,
         timeout_s=timeout,
+    )
+
+
+def _wait_streaming(
+    process: subprocess.Popen[str],
+    *,
+    command: tuple[str, ...],
+    timeout: float,
+    cancel: Event | None,
+    on_stderr: Callable[[str], None],
+) -> GitResult:
+    """Wait for git while handing stderr fragments to `on_stderr` as they land.
+
+    `git clone --progress` rewrites its progress line with a carriage return,
+    so fragments are split on both CR and LF. Readiness comes from a selector
+    over the pipe descriptors, and the bytes are read from the descriptor so
+    the pipes cannot deadlock on a full buffer. Cancellation, the deadline,
+    and the process-group kill are the same ones `_wait_captured` uses.
+    """
+    deadline = time.monotonic() + timeout
+    selector = selectors.DefaultSelector()
+    raw: dict[str, list[str]] = {"stdout": [], "stderr": []}
+    decoders = {
+        name: codecs.getincrementaldecoder("utf-8")("replace") for name in raw
+    }
+    pending = ""
+    for name, stream in (("stdout", process.stdout), ("stderr", process.stderr)):
+        if stream is not None:
+            selector.register(stream.fileno(), selectors.EVENT_READ, name)
+
+    def consume(chunk: bytes) -> None:
+        nonlocal pending
+        text = decoders["stderr"].decode(chunk)
+        if not text:
+            return
+        raw["stderr"].append(text)
+        fragments = re.split(r"[\r\n]", pending + text)
+        pending = fragments.pop()
+        for fragment in fragments:
+            if fragment.strip():
+                on_stderr(fragment)
+
+    try:
+        while True:
+            if cancel is not None and cancel.is_set():
+                stdout, stderr = _terminate_process_group(process)
+                return GitResult(
+                    args=command,
+                    returncode=130,
+                    stdout="".join(raw["stdout"]) + stdout,
+                    stderr="".join(raw["stderr"]) + stderr,
+                    timeout_s=timeout,
+                    cancelled=True,
+                )
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                stdout, stderr = _terminate_process_group(process)
+                return GitResult(
+                    args=command,
+                    returncode=124,
+                    stdout="".join(raw["stdout"]) + stdout,
+                    stderr="".join(raw["stderr"]) + stderr,
+                    timeout_s=timeout,
+                    timed_out=True,
+                )
+            for key, _ in selector.select(timeout=min(0.2, remaining)):
+                chunk = os.read(key.fd, 8192)
+                if not chunk:
+                    selector.unregister(key.fd)
+                elif key.data == "stdout":
+                    raw["stdout"].append(decoders["stdout"].decode(chunk))
+                else:
+                    consume(chunk)
+            if not selector.get_map() and process.poll() is not None:
+                break
+    except BaseException:
+        _terminate_process_group(process)
+        raise
+    finally:
+        selector.close()
+        # communicate() closes the pipes on the stop paths; the successful
+        # path read them directly, so close them here or they stay open until
+        # the garbage collector complains.
+        for stream in (process.stdout, process.stderr):
+            if stream is not None:
+                stream.close()
+    return GitResult(
+        args=command,
+        returncode=process.returncode,
+        stdout="".join(raw["stdout"]),
+        stderr="".join(raw["stderr"]),
+        timeout_s=timeout,
+    )
+
+
+def run_git(
+    repo: Path,
+    *args: str,
+    timeout: float,
+    env: Mapping[str, str] | None = None,
+    cancel: Event | None = None,
+    on_stderr: Callable[[str], None] | None = None,
+) -> GitResult:
+    """Run `git -C <repo> <args...>` and capture its output.
+
+    With `on_stderr`, the command is streamed instead of captured whole: each
+    progress fragment is passed to the callback as it arrives, so a long clone
+    can report progress before it finishes.
+    """
+    command = (
+        *_parent_death_launcher(),
+        "git",
+        "-c",
+        "core.hooksPath=/dev/null",
+        "-c",
+        "core.fsmonitor=false",
+        "-C",
+        str(repo),
+        *args,
+    )
+    if cancel is not None and cancel.is_set():
+        return GitResult(
+            args=command,
+            returncode=130,
+            stdout="",
+            stderr="cancelled",
+            timeout_s=timeout,
+            cancelled=True,
+        )
+    try:
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=_git_env(env),
+            # A new session lets timeout/cancel kill the whole git group. A
+            # SIGKILL of repopull itself is still outside this mechanism.
+            start_new_session=True,
+        )
+    except OSError as exc:
+        return GitResult(
+            args=command,
+            returncode=127,
+            stdout="",
+            stderr=str(exc),
+            timeout_s=timeout,
+        )
+    if on_stderr is None:
+        return _wait_captured(
+            process, command=command, timeout=timeout, cancel=cancel
+        )
+    return _wait_streaming(
+        process,
+        command=command,
+        timeout=timeout,
+        cancel=cancel,
+        on_stderr=on_stderr,
     )
 
 

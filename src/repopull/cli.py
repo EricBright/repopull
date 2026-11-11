@@ -7,12 +7,13 @@ import fnmatch
 import json
 import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from repopull import __version__
 from repopull.clone import (
     CloneError,
+    CloneProgress,
     clone_repository,
     derive_name,
     validate_name,
@@ -263,6 +264,16 @@ def _repair_root(config: Config, *, assume_yes: bool) -> int:
     return 0
 
 
+def _terminal_progress() -> Callable[[CloneProgress], None]:
+    """Draw clone progress on stderr, for an interactive terminal only."""
+
+    def show(update: CloneProgress) -> None:
+        sys.stderr.write(f"\r{update.text}\033[K")
+        sys.stderr.flush()
+
+    return show
+
+
 def _clone(
     config: Config,
     url: str,
@@ -285,6 +296,7 @@ def _clone(
     problem = check_log_dir(config.log_dir)
     if problem is not None:
         return _fail(problem)
+    progress = _terminal_progress() if sys.stderr.isatty() else None
     try:
         with run_lock(config.log_dir):
             result = clone_repository(
@@ -294,11 +306,16 @@ def _clone(
                 timeout=(
                     timeout if timeout is not None else config.clone_timeout_s
                 ),
+                on_progress=progress,
             )
     except LockError as exc:
         return _fail(str(exc))
     except CloneError as exc:
         return _fail(str(exc))
+    finally:
+        if progress is not None:
+            sys.stderr.write("\r\033[K")
+            sys.stderr.flush()
     print(f"Cloned into {result.destination}")
     if result.empty:
         print("The remote has no commits yet.")

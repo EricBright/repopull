@@ -16,6 +16,7 @@ import os
 import re
 import shutil
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
@@ -46,6 +47,77 @@ class CloneResult:
     destination: Path
     url: str
     empty: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class CloneProgress:
+    """One progress update parsed from `git clone --progress`.
+
+    `percent` is the phase-local figure git prints, and `overall` maps it onto
+    a single 0-100 scale so a bar does not jump back when git starts the next
+    phase.
+    """
+
+    label: str
+    percent: int
+    overall: int
+    count: int | None = None
+    total: int | None = None
+
+    @property
+    def text(self) -> str:
+        """Human-readable summary for the status line."""
+        if self.count is not None and self.total:
+            return (
+                f"{self.label} {self.percent}% "
+                f"({self.count:,}/{self.total:,})"
+            )
+        return f"{self.label} {self.percent}%"
+
+
+_PROGRESS = re.compile(
+    r"^\s*(?:remote:\s*)?(?P<label>[A-Za-z][A-Za-z ]{0,32}?)"
+    r"\s*:\s*(?P<percent>\d{1,3})%"
+)
+_COUNTS = re.compile(r"\((\d+)/(\d+)\)")
+
+# Phases run in this order and each reports its own percentage, so they share
+# one scale instead of resetting the bar. "updating files" is the checkout git
+# does after the objects arrive.
+_PHASE_SPAN = {
+    "enumerating objects": (0, 3),
+    "counting objects": (3, 6),
+    "compressing objects": (6, 8),
+    "receiving objects": (8, 85),
+    "resolving deltas": (85, 95),
+    "updating files": (95, 100),
+    "checking out files": (95, 100),
+}
+
+
+def parse_progress(fragment: str) -> CloneProgress | None:
+    """Parse one stderr fragment into progress, or None for ordinary output."""
+    match = _PROGRESS.match(fragment)
+    if match is None:
+        return None
+    label = match.group("label").strip()
+    span = _PHASE_SPAN.get(label.casefold())
+    if span is None:
+        return None
+    percent = min(100, max(0, int(match.group("percent"))))
+    start, end = span
+    overall = start + round((end - start) * percent / 100)
+    counts = _COUNTS.search(fragment)
+    count = total = None
+    if counts is not None:
+        count, total = int(counts.group(1)), int(counts.group(2))
+    return CloneProgress(
+        label=label,
+        percent=percent,
+        overall=overall,
+        count=count,
+        total=total,
+    )
 
 
 def validate_url(raw: str) -> str:
@@ -131,6 +203,7 @@ def clone_repository(
     *,
     timeout: float,
     cancel: Event | None = None,
+    on_progress: Callable[[CloneProgress], None] | None = None,
 ) -> CloneResult:
     """Clone `url` into `root/name`, cleaning up on failure or cancellation."""
     url = validate_url(url)
@@ -150,6 +223,12 @@ def clone_repository(
 
     try:
         checkout = temporary / "repo"
+
+        def report(fragment: str) -> None:
+            update = parse_progress(fragment)
+            if update is not None and on_progress is not None:
+                on_progress(update)
+
         result = git.run_git(
             root,
             "clone",
@@ -159,6 +238,7 @@ def clone_repository(
             str(checkout),
             timeout=timeout,
             cancel=cancel,
+            on_stderr=None if on_progress is None else report,
         )
         if result.cancelled:
             raise CloneCancelled("Clone cancelled.")
@@ -168,6 +248,12 @@ def clone_repository(
             raise CloneError(result.summary())
         if not (checkout / ".git").exists():
             raise CloneError("git did not create a repository.")
+        if on_progress is not None:
+            # git omits its checkout phase when it has nothing to report, so
+            # finish the scale here instead of leaving the bar short.
+            on_progress(
+                CloneProgress(label="Finishing", percent=100, overall=100)
+            )
 
         empty = git.head_sha(checkout, timeout=min(30.0, timeout)) is None
         try:

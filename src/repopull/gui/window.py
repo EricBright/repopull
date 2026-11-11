@@ -2156,11 +2156,17 @@ class MainWindow(QMainWindow):
             timeout=self.config.clone_timeout_s,
             log_dir=self.config.log_dir,
         )
+        task.signals.progress.connect(self._on_clone_progress)
         task.signals.finished.connect(self._on_clone_finished)
         task.signals.failed.connect(self._on_clone_failed)
         task.signals.cancelled.connect(self._on_clone_cancelled)
         self.clone_task = task
         QThreadPool.globalInstance().start(task)
+
+    def _on_clone_progress(self, percent: int, text: str) -> None:
+        self.progress.setRange(0, 100)
+        self.progress.setValue(max(0, min(100, percent)))
+        self._flash(text)
 
     def _on_clone_finished(self, result: object) -> None:
         if not isinstance(result, CloneResult):

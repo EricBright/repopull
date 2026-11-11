@@ -8,7 +8,7 @@ from threading import Event
 
 from PySide6.QtCore import QObject, QRunnable, Signal
 
-from repopull.clone import CloneCancelled, clone_repository
+from repopull.clone import CloneCancelled, CloneProgress, clone_repository
 from repopull.models import Report
 from repopull.runtime import run_lock
 from repopull.sync import RowCallback
@@ -60,6 +60,7 @@ class RunTask(QRunnable):
 class CloneSignals(QObject):
     """Signals emitted by a `CloneTask`."""
 
+    progress = Signal(int, str)
     finished = Signal(object)
     failed = Signal(str)
     cancelled = Signal()
@@ -85,6 +86,7 @@ class CloneTask(QRunnable):
         self.log_dir = log_dir
         self.cancel = Event()
         self.signals = CloneSignals()
+        self._last_overall: int | None = None
 
     def run(self) -> None:
         try:
@@ -95,6 +97,7 @@ class CloneTask(QRunnable):
                     self.root,
                     timeout=self.timeout,
                     cancel=self.cancel,
+                    on_progress=self._report,
                 )
         except CloneCancelled:
             self.signals.cancelled.emit()
@@ -102,3 +105,14 @@ class CloneTask(QRunnable):
             self.signals.failed.emit(str(exc))
         else:
             self.signals.finished.emit(result)
+
+    def _report(self, update: CloneProgress) -> None:
+        """Forward one clone update to the UI thread.
+
+        git reports several times per percentage point; the bar only has 100
+        steps, so only the changes in the overall figure cross the thread.
+        """
+        if update.overall == self._last_overall:
+            return
+        self._last_overall = update.overall
+        self.signals.progress.emit(update.overall, update.text)
