@@ -10,8 +10,8 @@ between discovery, git access, decision-making, and presentation.
 | `models.py` | Frozen dataclasses: `RepoRef`, `RepoState`, `Row`, `Report`, `Outcome`. |
 | `config.py` | TOML loading, validation, defaults, path resolution, and per-repository bulk-action holds. |
 | `discovery.py` | Finds `.git` directories at depth 1–2, applies ignore globs, skips clone work-in-progress. |
-| `git.py` | Typed wrappers around the git CLI; the only place that spawns processes. |
-| `clone.py` | Validates a clone address and folder name, clones into a temporary folder, then renames it into place. |
+| `git.py` | Typed wrappers around the git CLI; the only place that spawns processes. Captures output whole, or streams stderr to a callback when a command reports progress. |
+| `clone.py` | Validates a clone address and folder name, clones into a temporary folder, reports git's phase progress, then renames it into place. |
 | `sync.py` | Inspection, fetching, classification, and applying updates. |
 | `refresh.py` | Pure automatic-refresh policy: interval clamping, delays, backoff, suspend detection, and the GUI decision table. |
 | `report.py` | Table rendering, log persistence, JSON serialization. |
@@ -129,14 +129,15 @@ writing a separate JSON file.
 - `tests/test_discovery.py` — nested discovery, ignore globs, depth limits,
   clone temporary folders.
 - `tests/test_clone.py` — URL and folder-name validation, local and empty
-  remotes, failed/cancelled cleanup, and discovery of a partial clone.
+  remotes, failed/cancelled cleanup, discovery of a partial clone, progress
+  parsing, and cancel/timeout raised from inside the progress stream.
 - `tests/test_config.py`, `tests/test_report.py`, `tests/test_models.py`,
   `tests/test_runtime.py` — config round-trip, report JSON/render, model
   predicates/counts, run lock.
 - `tests/test_diagnostics.py`, `tests/test_cli.py`, `tests/test_gui.py` —
   path/root advice, CLI exit paths, offscreen GUI.
 - `tests/test_gui_clone.py` — Clone dialog validation, background task signals,
-  busy state, and close-while-cloning.
+  progress throttling, busy state, and close-while-cloning.
 - `tests/test_packaging.py` — AppImage trim policy and the source-import guard.
 - `tests/test_refresh.py` — interval clamps, delay/backoff, suspend detection,
   and the pure automatic-refresh decision table.

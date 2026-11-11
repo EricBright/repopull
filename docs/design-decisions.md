@@ -629,4 +629,27 @@ are still never written to, so the pull-only guarantee holds. Private remotes
 need an SSH agent or credential helper, and submodules initialize on the first
 sync rather than during the clone.
 
+## 39. Stream clone progress without a second kill path
+
+**Context:** `git clone` writes its progress to stderr, and `run_git` captured
+it whole, so the GUI could only show an indeterminate bar for the length of a
+clone. The obvious fix — open a `Popen` inside `clone.py` and read the pipe
+there — would fork the timeout, cancellation, and process-group termination
+logic that the hardening pass exists to keep in one place.
+
+**Decision:** `run_git` takes an optional `on_stderr` callback. Without it,
+every command keeps the original captured wait unchanged. With it, a selector
+over the pipe descriptors reads fragments as they arrive, splits on CR as well
+as LF because git rewrites its progress line in place, and calls the same
+`_terminate_process_group` on cancel or timeout. `clone.py` owns the parsing: it
+maps git's per-phase percentages onto one 0–100 scale and ignores anything that
+is not a progress line. The GUI forwards only changes in the overall figure; the
+CLI draws only when stderr is a terminal.
+
+**Consequences:** A clone is observable while it runs, and the kill/reap path
+still exists once. Progress stays a display concern: a bad parse cannot change
+the clone's outcome, and failing to read progress cannot block the transfer. A
+local clone that git serves with hardlinks reports only start and finish,
+because git emits nothing in between.
+
 For the full documentation index, see [README.md](../README.md#documentation-index).
