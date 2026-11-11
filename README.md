@@ -270,7 +270,7 @@ make bump        # increment the patch version
 make release     # check, bump the patch, build the AppImage
 ```
 
-CI runs `make check` on every push and pull request; see
+CI runs `make check` on Python 3.11 and 3.13 for every push and pull request; see
 [.github/workflows/ci.yml](.github/workflows/ci.yml).
 
 The version lives in `pyproject.toml` and `src/repopull/__init__.py`. `make bump`

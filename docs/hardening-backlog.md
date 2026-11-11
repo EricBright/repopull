@@ -59,8 +59,10 @@ The Rust decision remains gated and no Rust is built.
   Temporary `.repopull-clone-*` folders are invisible to discovery; existing
   folders are never overwritten; `ext::` is rejected; `clone_timeout_s`
   defaults to 1800.
-- **Next:** possible follow-ups: a 3.11 CI leg, streaming clone progress, and a
-  shell-completion pass.
+- **CI matrix:** the `check` job runs on Python 3.11 (the declared floor) and
+  3.13 (the image interpreter), with `fail-fast: false` so both legs report.
+- **Next:** possible follow-ups: streaming clone progress and a shell-completion
+  pass.
 - **Resume with:** `make check`, `make audit`, then `make appimage` if the
   image needs rebuilding.
 
