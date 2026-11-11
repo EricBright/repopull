@@ -36,9 +36,14 @@ jobs:
           cache-dependency-path: pyproject.toml
 
       - name: Install Qt system libraries
+        # Qt6Gui links libEGL/libGL at load time even for the offscreen
+        # platform, and libegl1 is the one package the runner image lacks.
+        # Short timeouts keep a mirror outage from eating thirteen minutes.
         run: |
-          sudo apt-get update -o Acquire::Retries=5
-          sudo apt-get install -y -o Acquire::Retries=5 \
+          sudo apt-get update \
+            -o Acquire::Retries=3 -o Acquire::http::Timeout=20
+          sudo apt-get install -y \
+            -o Acquire::Retries=3 -o Acquire::http::Timeout=20 \
             libegl1 libgl1 libxkbcommon0 libdbus-1-3
 
       - name: Install project and test tools
