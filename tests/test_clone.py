@@ -10,8 +10,10 @@ from threading import Event
 from repopull.clone import (
     CloneCancelled,
     CloneError,
+    CloneProgress,
     clone_repository,
     derive_name,
+    parse_progress,
     validate_name,
     validate_url,
 )
@@ -147,6 +149,139 @@ class CloneTests(unittest.TestCase):
             with self.assertRaises(CloneCancelled):
                 clone_repository(
                     str(remote), "cloned", root, timeout=60, cancel=cancel
+                )
+
+            self.assertFalse((root / "cloned").exists())
+            self.assertEqual(list(root.iterdir()), [])
+
+
+class ProgressParsingTests(unittest.TestCase):
+    def test_a_phase_percentage_maps_onto_the_overall_scale(self) -> None:
+        update = parse_progress(
+            "Receiving objects:  87% (1234/1418), 2.30 MiB | 1.20 MiB/s"
+        )
+
+        assert update is not None
+        self.assertEqual(update.label, "Receiving objects")
+        self.assertEqual(update.percent, 87)
+        self.assertEqual((update.count, update.total), (1234, 1418))
+        self.assertEqual(update.overall, 75)
+        self.assertEqual(
+            update.text, "Receiving objects 87% (1,234/1,418)"
+        )
+
+    def test_the_remote_prefix_is_part_of_git_s_output_not_the_label(self) -> None:
+        update = parse_progress("remote: Counting objects: 42% (12/28)")
+
+        assert update is not None
+        self.assertEqual(update.label, "Counting objects")
+        self.assertEqual(update.overall, 4)
+
+    def test_every_phase_advances_the_same_scale(self) -> None:
+        overalls: list[int] = []
+        for label in (
+            "Enumerating objects",
+            "Counting objects",
+            "Compressing objects",
+            "Receiving objects",
+            "Resolving deltas",
+            "Updating files",
+        ):
+            update = parse_progress(f"{label}: 100% (3/3)")
+            assert update is not None, label
+            overalls.append(update.overall)
+
+        self.assertEqual(overalls, sorted(overalls))
+        self.assertEqual(overalls[0], 3)
+        self.assertEqual(overalls[-1], 100)
+
+    def test_counts_are_optional(self) -> None:
+        update = parse_progress("Resolving deltas: 100%")
+
+        assert update is not None
+        self.assertEqual(update.text, "Resolving deltas 100%")
+        self.assertIsNone(update.count)
+
+    def test_percentages_are_clamped_to_the_scale(self) -> None:
+        update = parse_progress("Receiving objects: 150% (1/1)")
+
+        assert update is not None
+        self.assertEqual(update.percent, 100)
+        self.assertEqual(update.overall, 85)
+
+    def test_plain_git_output_produces_no_progress(self) -> None:
+        for line in (
+            "Cloning into '/tmp/x'...",
+            "remote: Enumerating objects: 5813, done.",
+            "remote: Total 5813 (delta 3646), reused 5780",
+            "Updating files: 3 files",
+            "fatal: repository not found",
+            "",
+        ):
+            self.assertIsNone(parse_progress(line), line)
+
+
+class ProgressCloneTests(unittest.TestCase):
+    def test_a_streamed_clone_reports_progress_and_finishes_at_100(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            remote, _seed, _watched = support.make_pair(base)
+            root = base / "clone-root"
+            root.mkdir()
+            updates: list[CloneProgress] = []
+
+            clone_repository(
+                f"file://{remote}",
+                "cloned",
+                root,
+                timeout=60,
+                on_progress=updates.append,
+            )
+
+            self.assertTrue(updates)
+            overalls = [update.overall for update in updates]
+            self.assertEqual(overalls, sorted(overalls))
+            self.assertEqual(overalls[-1], 100)
+            self.assertEqual(updates[-1].label, "Finishing")
+
+    def test_cancelling_from_the_progress_stream_leaves_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            remote, _seed, _watched = support.make_pair(base)
+            root = base / "clone-root"
+            root.mkdir()
+            cancel = Event()
+
+            def stop(_update: CloneProgress) -> None:
+                cancel.set()
+
+            with self.assertRaises(CloneCancelled):
+                clone_repository(
+                    f"file://{remote}",
+                    "cloned",
+                    root,
+                    timeout=60,
+                    cancel=cancel,
+                    on_progress=stop,
+                )
+
+            self.assertFalse((root / "cloned").exists())
+            self.assertEqual(list(root.iterdir()), [])
+
+    def test_a_timeout_during_the_stream_leaves_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            remote, _seed, _watched = support.make_pair(base)
+            root = base / "clone-root"
+            root.mkdir()
+
+            with self.assertRaises(CloneError):
+                clone_repository(
+                    f"file://{remote}",
+                    "cloned",
+                    root,
+                    timeout=0.001,
+                    on_progress=lambda _update: None,
                 )
 
             self.assertFalse((root / "cloned").exists())

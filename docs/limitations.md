@@ -13,6 +13,9 @@
   first sync, not during the clone.
 - Clone creates one new folder; it cannot replace an existing repository or
   clone several repositories at once.
+- Clone progress comes from git on stderr, so a local clone that git serves
+  with hardlinks (same filesystem) reports only start and finish; there is
+  nothing for it to report in between.
 - Does not switch local branches or fast-forward any local branch other than the
   current tracking branch. A normal `git fetch` still updates the remote's
   configured remote-tracking refs.

@@ -67,6 +67,8 @@ restored; a detail page is restored only if that repository is still present.
 
 - **Clone…** in the library header asks for a repository URL and a new folder
   name, shows the exact destination, and clones in the background with Cancel.
+  The status bar tracks git's phases (`Receiving objects 42% (1,234/5,678)`) on
+  one 0–100 scale, so it never jumps back when git moves to the next phase.
   Existing folders are never overwritten. Private remotes need an SSH agent or
   a credential helper because repopull never prompts.
 - **Banner**: "N repositories can be updated" with a **Sync these** button.

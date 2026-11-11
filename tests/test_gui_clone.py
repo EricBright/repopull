@@ -24,7 +24,7 @@ if HAVE_PYSIDE:
 
     import support
 
-    from repopull.clone import CloneResult
+    from repopull.clone import CloneProgress, CloneResult
     from repopull.config import Config
     from repopull.gui.clone_dialog import CloneDialog
     from repopull.gui.jobs import CloneTask
@@ -143,6 +143,51 @@ if HAVE_PYSIDE:
 
                 self.assertEqual(cancelled, [True])
                 self.assertEqual(list(root.iterdir()), [])
+
+        def test_clone_task_forwards_each_overall_step_once(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = base / "clone-root"
+                root.mkdir()
+                task = CloneTask(
+                    "https://example.invalid/repo.git",
+                    "cloned",
+                    root,
+                    timeout=60,
+                    log_dir=base / "logs",
+                )
+                seen: list[tuple[int, str]] = []
+                task.signals.progress.connect(
+                    lambda percent, text: seen.append((percent, text))
+                )
+
+                # git repeats a phase many times per point; only the overall
+                # figure crossing the thread is what the bar can show.
+                task._report(CloneProgress("Counting objects", 40, 4, 2, 5))
+                task._report(CloneProgress("Counting objects", 80, 4, 4, 5))
+                task._report(CloneProgress("Receiving objects", 50, 46, 10, 20))
+
+                self.assertEqual([percent for percent, _ in seen], [4, 46])
+                self.assertEqual(seen[0][1], "Counting objects 40% (2/5)")
+
+        def test_progress_updates_the_bar_and_status(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                window, _root = self._window(base)
+
+                window._on_clone_progress(40, "Receiving objects 40% (2/5)")
+
+                self.assertEqual(window.progress.maximum(), 100)
+                self.assertEqual(window.progress.value(), 40)
+                self.assertEqual(
+                    window.status_message.text(),
+                    "Receiving objects 40% (2/5)",
+                )
+
+                window._on_clone_progress(140, "Finishing 100%")
+
+                self.assertEqual(window.progress.value(), 100)
+                window.deleteLater()
 
         def test_clone_button_follows_busy_state(self) -> None:
             with tempfile.TemporaryDirectory() as tmp:

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Clone reports progress. The GUI status bar and `repopull clone` on a terminal
+  follow git's phases (`Receiving objects 42% (1,234/5,678)`) on one 0–100
+  scale, instead of showing an indeterminate spinner for the whole clone.
+
 ## 0.6.0 — 2026-11-10
 
 - Add **Clone…** to the library header and `repopull clone URL [--name NAME]`.
