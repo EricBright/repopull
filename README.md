@@ -112,7 +112,8 @@ scriptable. Automatic status refresh is GUI-only and never syncs.
 ```
 
 `--root`, `--config`, `--no-color`, `--json`, and `--verbose` work before **or**
-after the subcommand.
+after the subcommand. `repopull completions bash|fish` prints a completion
+script; see [docs/configuration.md](docs/configuration.md#shell-completions).
 
 ## Desktop GUI (optional)
 

@@ -20,6 +20,7 @@ from repopull.clone import (
     validate_url,
 )
 from repopull.config import Config, ConfigError, load_config
+from repopull.completions import SHELLS, render as render_completions
 from repopull.diagnostics import (
     describe_paths,
     missing_root_advice,
@@ -132,6 +133,13 @@ def _build_command_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("report", help="print the last report")
     sub.add_parser("version", help="print the version")
+
+    completions = sub.add_parser(
+        "completions", help="print a shell completion script"
+    )
+    completions.add_argument(
+        "shell", choices=SHELLS, help="shell to write the script for"
+    )
     return parser
 
 
@@ -327,6 +335,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     raw = list(sys.argv[1:] if argv is None else argv)
     global_args, remaining = _build_global_parser().parse_known_args(raw)
     args = _build_command_parser().parse_args(remaining)
+
+    # The script is static text, so it must not depend on this installation's
+    # config: a broken config.toml would otherwise print an error at the start
+    # of every shell that sources the completion.
+    if args.command == "completions":
+        print(render_completions(args.shell), end="")
+        return 0
 
     try:
         config = load_config(

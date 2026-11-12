@@ -51,10 +51,10 @@ The Rust decision remains gated and no Rust is built.
   reports 0.7.0. `--cli status` ran against the real library (two repositories,
   both up to date) rather than a throwaway one, and the Wayland/X11 GUI pass
   still needs a human at a screen.
-- **Checks:** 330 tests (319 at 0.6.0), 1 expected failure, mypy strict clean,
-  `make audit` clean, README 1,987 words. CI run `43126558934` is green on both
-  legs. The 0.6.0 run caught a test-only import bug on 3.13 in the first tag,
-  fixed in `b30c7d9`; the AppImage asset did not change.
+- **Checks:** 349 tests (330 at the 0.7.0 tag), 1 expected failure, mypy strict
+  clean, `make audit` clean, README 1,987 words. CI run `43126558934` is green
+  on both legs. The 0.6.0 run caught a test-only import bug on 3.13 in the first
+  tag, fixed in `b30c7d9`; the AppImage asset did not change.
 - **Trim:** `packaging/trim_appdir.py`; the keep-list is tied to `src/` imports
   by `tests/test_packaging.py`, and the build refuses images over 60 MB. The
   step is an independent implementation, not AppGlider code.
@@ -85,9 +85,14 @@ The Rust decision remains gated and no Rust is built.
   cooldown. The workflow holds no secrets, builds no release, and the token is
   read-only, so a compromised action could lie about a test result but could
   not alter anything a user installs.
-- **Next:** shell completions. The progress work and the CI pins shipped in
-  0.7.0, and the CHANGELOG has no `Unreleased` section until the next change
-  needs one.
+- **Completions (unreleased):** `repopull completions bash|fish` prints a script
+  rendered from `src/repopull/completions.py`. A test compares that table with
+  the real parser, so an option cannot be added without also being completed.
+  Labels are not completed on purpose: that would scan the watched root on every
+  TAB. 19 new tests, 349 total.
+- **Next:** nothing is in flight. The completion work would ship as 0.8.0, and
+  the only known follow-ups are native zsh completion and the accepted gaps in
+  [limitations.md](limitations.md).
 - **Resume with:** `make check`, `make audit`, then `make appimage` if the
   image needs rebuilding.
 

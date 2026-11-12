@@ -683,4 +683,33 @@ verified against pinned SHA-256 digests. A runner compromise can therefore make
 a check lie, but it cannot change the AppImage a user downloads, and the job
 holds no secret that could be taken.
 
+## 41. Generate completions from a declared table, and do not complete labels
+
+**Context:** Tab completion means naming every command and option in a shell
+script. argparse builds the command tree at runtime but exposes subparsers only
+through a private attribute, and a hand-written script drifts the first time an
+option is added. Completing repository labels is the thing users would most
+want, but it requires a scan of the watched root on every TAB, and a library on
+a spinning external disk makes that a multi-second stall the shell cannot
+interrupt. The AppImage also ships no completion files, so however this is
+installed it must come out of the command itself.
+
+**Decision:** `completions.py` declares the commands and options in plain
+tables and renders bash and fish scripts from them. A test walks the real parser
+and fails when a command or option exists in one place and not the other, which
+pins the tables the same way the AppImage keep-list is pinned to the source
+imports. `repopull completions SHELL` prints a script, and it is dispatched
+before the config is loaded so a broken `config.toml` cannot print an error at
+the start of every shell. Zsh uses its `bashcompinit` emulation instead of a
+native `_arguments` body, because the bash script can be syntax-checked by
+`bash -n` wherever the tests run and a native zsh script cannot be checked
+without zsh installed.
+
+**Consequences:** Completion covers commands, global options, per-command
+options and paths, and it cannot silently fall behind the parser. Labels stay
+out, which is a real limitation: the glob is the supported way to narrow a run,
+and the docs say so. The bash function is exercised in the suite by calling it
+with `COMP_WORDS` and `COMP_CWORD` set, so the tests check behaviour and not
+just the presence of strings.
+
 For the full documentation index, see [README.md](../README.md#documentation-index).

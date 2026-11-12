@@ -185,6 +185,7 @@ Commands:
 | `sync --force` | Fetch, then hard-reset selected repos to their upstream. |
 | `report` | Print `logs/latest.log`. |
 | `version` | Print the version. |
+| `completions SHELL` | Print a completion script for `bash` or `fish`. |
 
 `status` and `sync` accept repeatable `--only GLOB`, matched against the relative
 label and the basename:
@@ -197,6 +198,30 @@ label and the basename:
 
 Bulk `status` and `sync` omit repositories held by `exclude_from_refresh` or
 `exclude_from_sync`. An explicit `--only` match overrides the hold.
+
+### Shell completions
+
+```bash
+eval "$(repopull completions bash)"          # bash, or ~/.bashrc
+autoload -U bashcompinit && bashcompinit     # zsh, before the same line
+repopull completions fish > ~/.config/fish/completions/repopull.fish
+```
+
+Completion covers the commands, the global options, each command's own options,
+and the `bash`/`fish` argument of `completions` itself. `--root`, `--config` and
+`--name` complete paths, and `clone` completes paths for its address.
+
+Repository labels are deliberately **not** completed. Offering them means
+scanning the watched root on every TAB, which is a stall measured in seconds
+when the library sits on a spinning external disk — and the shell cannot
+interrupt it. Type the glob instead; `--only 'craft-*'` matches labels.
+
+The scripts are generated from a table in `src/repopull/completions.py`, and a
+test compares that table with the real argument parser, so a command or option
+added without a matching entry fails the suite instead of silently missing from
+completion. Zsh uses its `bashcompinit` emulation rather than a native script:
+the bash script can be syntax-checked anywhere the tests run, a native zsh body
+cannot be checked without zsh installed.
 
 ## Exit codes
 

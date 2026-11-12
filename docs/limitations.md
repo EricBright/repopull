@@ -24,5 +24,10 @@
 - No desktop notifications; status is in the window, tray, and logs.
 - The GUI is dark-only, with no per-repository normal-sync selection.
 - Not intended for repositories you own or contribute to, since there is no push path.
+- Shell completion covers commands, options and paths, not repository labels.
+  Offering labels would scan the watched root on every TAB, which stalls when
+  the library is on an external disk; narrow a run with `--only GLOB` instead.
+- Completion ships for bash and fish. Zsh uses its `bashcompinit` emulation of
+  the bash script; there is no native zsh completion.
 
 For the full documentation index, see [README.md](../README.md#documentation-index).

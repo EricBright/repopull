@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Shell completions for bash and fish: `repopull completions bash` and
+  `repopull completions fish` print a script to eval or install. Commands,
+  global options, per-command options and paths complete; repository labels do
+  not, because offering them would scan the watched root on every TAB.
+
 ## 0.7.0 — 2026-11-11
 
 - Clone reports progress. The GUI status bar and `repopull clone` on a terminal

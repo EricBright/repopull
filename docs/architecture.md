@@ -21,6 +21,7 @@ between discovery, git access, decision-making, and presentation.
 | `diagnostics.py` | Human-readable path/root explanations and fix-it advice. |
 | `menu.py` | Interactive loop and selection parsing. |
 | `cli.py` | Argument parsing, dispatch, exit codes, the run lock. |
+| `completions.py` | Declares the command and option names and renders the bash and fish completion scripts. |
 | `runtime.py` | `flock`-based single-run guard. |
 
 `git.py` is deliberately the only module that runs subprocesses. Everything else
@@ -147,6 +148,9 @@ writing a separate JSON file.
   consistency.
 - `tests/test_icons.py`, `tests/test_docs.py` — icon assets/window icon; README
   entry-load cap, registry completeness, and registry backlinks.
+- `tests/test_completions.py` — the declared table against the real parser, the
+  bash script run under `bash` with `COMP_WORDS` set, and fish/bash syntax
+  checks. The scripts run only where the shell is installed; CI has bash.
 
 No test touches the real watched repositories or the network. The
 [test falsifiability audit](test-falsifiability.md) records the 0.2.3 run
