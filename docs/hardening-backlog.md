@@ -40,16 +40,19 @@ The Rust decision remains gated and no Rust is built.
 
 ## Current state and next session (2026-11-11)
 
-- **Release:** 0.6.0, tag `v0.6.0` at `b30c7d9`;
-  <https://github.com/EricBright/repopull/releases/tag/v0.6.0>. The tree has the
-  AppDir trim (95 MB → 46 MB), **Clone…**, third-party notices, and 32 new
-  tests.
-- **AppImage:** `dist/repopull-0.6.0-x86_64.AppImage`, 45,857,272 bytes,
-  SHA-256 `5eb630524d8f0e66078e6387262bf764696574bef27a51cacbd8097fdb7f2375`.
-  Verified on Wayland, X11 and offscreen with 43 rows; the packaged CLI cloned
-  a local bare remote into a clean folder.
+- **Release:** 0.7.0, tag `v0.7.0`;
+  <https://github.com/EricBright/repopull/releases/tag/v0.7.0>. The tree adds
+  streamed clone progress (11 tests) and the pinned CI inputs on top of the
+  0.6.0 AppDir trim, **Clone…** and third-party notices. 0.6.0 stays at tag
+  `v0.6.0`, `b30c7d9`.
+- **AppImage:** `dist/repopull-0.7.0-x86_64.AppImage`, 45,865,464 bytes,
+  SHA-256 `6bc302c6ce2b76bf6bb7efa3be12c7bd08f7e106795786903b6af3f9260704b0`.
+  The build's offscreen smoke test passed with 45 rows, and `--cli version`
+  reports 0.7.0. `--cli status` ran against the real library (two repositories,
+  both up to date) rather than a throwaway one, and the Wayland/X11 GUI pass
+  still needs a human at a screen.
 - **Checks:** 330 tests (319 at 0.6.0), 1 expected failure, mypy strict clean,
-  `make audit` clean, README 1,996 words. CI run `43124916256` is green on both
+  `make audit` clean, README 1,987 words. CI run `43126558934` is green on both
   legs. The 0.6.0 run caught a test-only import bug on 3.13 in the first tag,
   fixed in `b30c7d9`; the AppImage asset did not change.
 - **Trim:** `packaging/trim_appdir.py`; the keep-list is tied to `src/` imports

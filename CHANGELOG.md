@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.0 — 2026-11-11
 
 - Clone reports progress. The GUI status bar and `repopull clone` on a terminal
   follow git's phases (`Receiving objects 42% (1,234/5,678)`) on one 0–100
