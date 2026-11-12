@@ -85,7 +85,9 @@ The Rust decision remains gated and no Rust is built.
   cooldown. The workflow holds no secrets, builds no release, and the token is
   read-only, so a compromised action could lie about a test result but could
   not alter anything a user installs.
-- **Next:** shell completions, or a release that includes the progress work.
+- **Next:** shell completions. The progress work and the CI pins shipped in
+  0.7.0, and the CHANGELOG has no `Unreleased` section until the next change
+  needs one.
 - **Resume with:** `make check`, `make audit`, then `make appimage` if the
   image needs rebuilding.
 
