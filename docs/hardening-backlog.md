@@ -46,9 +46,9 @@ The Rust decision remains gated and no Rust is built.
   check, and the zsync update metadata (349 → 414 tests). 0.7.0 stays at tag
   `v0.7.0`, `62d6908`.
 - **AppImage:** `dist/repopull-0.8.0-x86_64.AppImage`, 46,230,008 bytes,
-  SHA-256 `f5033016...74f9ddd991`, with
+  SHA-256 `0fac3b9b...c2550fc5a8`, with
   `repopull-0.8.0-x86_64.AppImage.zsync` (158,313 bytes,
-  `cf9802e8...58b6582e`) beside it. The offscreen smoke test passed with 45
+  `90773923...7981ee811`) beside it. The offscreen smoke test passed with 45
   rows, `--cli version` reports 0.8.0, `--cli completions bash` prints a script,
   and `--cli version --check` reached api.github.com from inside the bundled
   Python. `readelf`-free inspection confirms `.upd_info` holds the

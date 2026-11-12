@@ -64,7 +64,7 @@ installed filename.
 414 tests pass (1 expected failure for the documented SIGKILL descendant gap),
 mypy strict is clean, and `make audit` reports no known vulnerabilities.
 
-**AppImage:** `repopull-0.8.0-x86_64.AppImage`, SHA-256 `f5033016344338f886a9677ee8880fb3ffb337b0579c544fe5581074f9ddd991`.
+**AppImage:** `repopull-0.8.0-x86_64.AppImage`, SHA-256 `0fac3b9b1a6037417a13ea1c546e8bbb7dc105ff428c032ebedad0c2550fc5a8`.
 The `.zsync` and `SHA256SUMS.txt` are published beside it.
 
 See [CHANGELOG.md](https://github.com/EricBright/repopull/blob/main/CHANGELOG.md).
