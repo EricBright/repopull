@@ -53,8 +53,13 @@ The Rust decision remains gated and no Rust is built.
   and `--cli version --check` reached api.github.com from inside the bundled
   Python. `readelf`-free inspection confirms `.upd_info` holds the
   `gh-releases-zsync` string, and the build's own check confirms the `.zsync`
-  SHA-1 matches the image. The Wayland/X11 GUI pass still needs a human at a
-  screen.
+  SHA-1 matches the image. The published asset was re-downloaded and its
+  SHA-256 matches `SHA256SUMS.txt`; `gh release view` lists the image, the
+  `.zsync` and the sums. Gear Lever reports the integrated copy as
+  `manager: GithubUpdater`, `embedded_source: true`, so it reads the embedded
+  update information; it installs AppImages under a version-less name
+  (`~/AppImages/repopull.appimage`), which is the stable path an autostart entry
+  wants. The Wayland/X11 GUI pass still needs a human at a screen.
 - **Checks:** 414 tests (349 at the 0.7.0 tag), 1 expected failure, mypy strict
   clean, `make audit` clean, README 1,995 words.
 - **Trim:** `packaging/trim_appdir.py`; the keep-list is tied to `src/` imports
