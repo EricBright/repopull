@@ -1,0 +1,7 @@
+# Tools CI installs next to the project. Pinned exactly, like the packaging
+# pins: an unpinned resolve executes whatever PyPI serves that day, and these
+# tools are not shipped, so a newer one buys no user-visible signal.
+# Update deliberately; `mypy` and `pip-audit` version skew shows up as a red
+# run or a new advisory, not as a silent behaviour change.
+mypy==2.4.1
+pip-audit==2.10.1

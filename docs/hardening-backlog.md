@@ -49,9 +49,9 @@ The Rust decision remains gated and no Rust is built.
   Verified on Wayland, X11 and offscreen with 43 rows; the packaged CLI cloned
   a local bare remote into a clean folder.
 - **Checks:** 330 tests (319 at 0.6.0), 1 expected failure, mypy strict clean,
-  `make audit` clean, README 1,996 words. The 0.6.0 CI run `42842559225` is
-  green on Python 3.13; it caught a test-only import bug in the first tag, fixed
-  in `b30c7d9`. The AppImage asset did not change.
+  `make audit` clean, README 1,996 words. CI run `43124916256` is green on both
+  legs. The 0.6.0 run caught a test-only import bug on 3.13 in the first tag,
+  fixed in `b30c7d9`; the AppImage asset did not change.
 - **Trim:** `packaging/trim_appdir.py`; the keep-list is tied to `src/` imports
   by `tests/test_packaging.py`, and the build refuses images over 60 MB. The
   step is an independent implementation, not AppGlider code.
@@ -69,12 +69,19 @@ The Rust decision remains gated and no Rust is built.
   3.13 (the image interpreter), with `fail-fast: false` so both legs report.
   The runner is pinned to `ubuntu-24.04` while `ubuntu-latest` migrates to
   26.04 between 19 October and 19 November 2026.
-- **CI status (2026-11-11):** red, for an external reason. Both legs fail in
-  "Install Qt system libraries": the runner cannot resolve Canonical's apt
-  mirrors (`Temporary failure resolving 'azure.archive.ubuntu.com'`), so
-  `libegl1` never installs. Qt6Gui needs `libEGL.so.1` at load time even for the
-  offscreen platform, so the step cannot be dropped. Retry once the archive is
-  reachable; nothing in the tree is implicated.
+- **CI status (2026-11-11):** green on both legs, 330 tests each. The earlier
+  reds were the runner failing to resolve Canonical's apt mirrors (`Temporary
+  failure resolving 'azure.archive.ubuntu.com'`) in "Install Qt system
+  libraries", which is why the step carries short retry timeouts. Qt6Gui needs
+  `libEGL.so.1` at load time even for the offscreen platform, so the step
+  cannot be dropped. Run `43124916256` is the first green run of the 3.11 leg.
+- **CI inputs:** both actions are pinned to a commit SHA with the tag in a
+  comment, `persist-credentials: false` keeps the read token out of
+  `.git/config`, and the tools come from `packaging/ci-requirements.txt` at
+  exact versions. `dependabot.yml` proposes action updates with an eight-day
+  cooldown. The workflow holds no secrets, builds no release, and the token is
+  read-only, so a compromised action could lie about a test result but could
+  not alter anything a user installs.
 - **Next:** shell completions, or a release that includes the progress work.
 - **Resume with:** `make check`, `make audit`, then `make appimage` if the
   image needs rebuilding.

@@ -118,6 +118,12 @@ pins PySide6 and certifi. Change them deliberately.
 - **PySide6 range:** `pyproject.toml` allows `>=6.8,<7` for a source checkout;
   the AppImage uses the exact pin. Test the oldest supported minor before
   widening the range.
+- **CI inputs:** the workflow pins `actions/checkout` and `actions/setup-python`
+  to a commit SHA with the release tag in a comment, and installs `mypy` and
+  `pip-audit` from `packaging/ci-requirements.txt` at exact versions. Dependabot
+  proposes updates for the actions. CI is not the build: the image is made
+  locally from `downloads.json` and the pinned requirements, so a compromise in
+  a CI runner cannot change what a user downloads.
 - **Rust:** there is no Rust wrapper and no build-time Rust dependency. The
   language decision stays gated on a measured need for a small native helper;
   see [hardening-backlog.md](hardening-backlog.md).
@@ -137,6 +143,7 @@ pins PySide6 and certifi. Change them deliberately.
 | `packaging/downloads.json` | Pinned build inputs |
 | `packaging/runtime-requirements.txt` | Bundled Python packages |
 | `packaging/build-requirements.txt` | Build-time Python package |
+| `packaging/ci-requirements.txt` | Test and audit tools CI installs |
 
 The icon family and its optical cuts are documented in
 [branding.md](branding.md); the build stages every hicolor size from the same

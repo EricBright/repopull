@@ -652,4 +652,35 @@ the clone's outcome, and failing to read progress cannot block the transfer. A
 local clone that git serves with hardlinks reports only start and finish,
 because git emits nothing in between.
 
+## 40. Pin CI inputs by SHA; keep the published artifact off CI
+
+**Context:** The workflow called `actions/checkout@v7` and
+`actions/setup-python@v7`. A tag is a pointer that its owner, or whoever
+compromises the owner, can move to a different commit after review, so a
+reviewed workflow can later run unreviewed code. `pip install mypy` and
+`pip install pip-audit` had the same problem one layer down: they executed
+whatever PyPI served on the run's date. GitHub added workflow lockfiles in
+October 2026, which keeps readable `vX.Y.Z` references and records the resolved
+commit in a separate file.
+
+**Decision:** Pin both actions to a full commit SHA with the release tag in a
+trailing comment. The comment is what makes the pin reviewable, and it is what
+Dependabot rewrites, so the pins do not rot. CI tools move into
+`packaging/ci-requirements.txt` at exact versions, and the project install takes
+`runtime-requirements.txt` as a constraint so both legs exercise the PySide6
+version the image ships. `persist-credentials: false` keeps the read token out
+of `.git/config`. Skip the lockfile for now: with two actions, no reusable
+workflows, no composite actions and no Docker references, the machinery adds a
+generated file and a verification job to solve a problem two comments solve.
+
+**Consequences:** A moved tag or a hostile publish cannot change what CI runs,
+and a PySide6 bump inside the allowed range no longer changes it either. The
+cost is that CI now tests the shipped binding rather than the newest one, so
+widening the `>=6.8,<7` range needs a manual check instead of showing up as a CI
+surprise. What none of this protects is the artifact, because CI does not build
+it: `make appimage` runs locally from `downloads.json`, whose three inputs are
+verified against pinned SHA-256 digests. A runner compromise can therefore make
+a check lie, but it cannot change the AppImage a user downloads, and the job
+holds no secret that could be taken.
+
 For the full documentation index, see [README.md](../README.md#documentation-index).

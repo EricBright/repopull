@@ -1,0 +1,19 @@
+version: 2
+
+updates:
+  # The workflow pins each action to a commit SHA, so the versions cannot drift
+  # on their own. Without this, the pins silently rot until someone unpins one
+  # "because it is stale", which is worse than a tag. Grouped so a routine week
+  # opens one pull request instead of one per action.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    # Wait eight days before offering a release, so a compromised publish is
+    # more likely to be yanked before this repo proposes it. The workflow only
+    # gets a read token, but the pin is the thing that makes that irrelevant.
+    cooldown:
+      default-days: 8
+    groups:
+      actions:
+        patterns: ["*"]

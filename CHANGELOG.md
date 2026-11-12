@@ -5,6 +5,10 @@
 - Clone reports progress. The GUI status bar and `repopull clone` on a terminal
   follow git's phases (`Receiving objects 42% (1,234/5,678)`) on one 0–100
   scale, instead of showing an indeterminate spinner for the whole clone.
+- CI pins both actions to a commit SHA and installs its tools from
+  `packaging/ci-requirements.txt`, so a moved tag or a bad PyPI publish cannot
+  change what a run executes. Dependabot proposes the updates. Nothing about
+  the shipped image changes: it is still built locally from checksummed inputs.
 
 ## 0.6.0 — 2026-11-10
 
