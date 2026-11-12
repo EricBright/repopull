@@ -108,6 +108,7 @@ from repopull.rootstate import (
     repair_root_state,
 )
 from repopull.uistate import UiState, load_ui_state, save_ui_state
+from repopull.updates import Release, UpdateError, is_newer, latest_release
 _ASSETS = Path(__file__).resolve().parent / "assets"
 
 from repopull.sync import (
@@ -173,6 +174,32 @@ class DiscoveryTask(QRunnable):
         self.signals.checked.emit(refs, check)
 
 
+class UpdateSignals(QObject):
+    """Signals from a background release check."""
+
+    finished = Signal(object)
+    failed = Signal(str)
+
+
+class UpdateTask(QRunnable):
+    """Ask GitHub for the newest release without blocking the window."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.signals = UpdateSignals()
+
+    def run(self) -> None:
+        try:
+            release = latest_release()
+        except UpdateError as exc:
+            self.signals.failed.emit(str(exc))
+            return
+        except Exception as exc:  # noqa: BLE001 - report to the UI
+            self.signals.failed.emit(str(exc))
+            return
+        self.signals.finished.emit(release)
+
+
 class MainWindow(QMainWindow):
     """One window that reads the same config and report files as the CLI."""
 
@@ -188,6 +215,8 @@ class MainWindow(QMainWindow):
         self._discover_async = discover_async
         self._hidden_requested = hidden
         self._channel: Channel | None = None
+        self._update_task: UpdateTask | None = None
+        self._release: Release | None = None
         self._discovery_generation = 0
         self._discovery_task: DiscoveryTask | None = None
         self._discovery_callback: Callable[[], None] | None = None
@@ -932,6 +961,40 @@ class MainWindow(QMainWindow):
             )
         )
 
+        self.settings_update_open = QPushButton("Open release page")
+        self.settings_update_open.setObjectName("Ghost")
+        self.settings_update_open.setAccessibleName("Open the release page")
+        self.settings_update_open.setVisible(False)
+        self.settings_update_open.clicked.connect(self._open_release_page)
+
+        self.settings_update = QPushButton("Check now")
+        self.settings_update.setObjectName("Ghost")
+        self.settings_update.setAccessibleName("Check for a newer repopull")
+        self.settings_update.setToolTip(
+            "Ask GitHub for the latest release. Nothing is downloaded."
+        )
+        self.settings_update.clicked.connect(self._check_for_updates)
+
+        update_controls = QWidget()
+        update_layout = QHBoxLayout(update_controls)
+        update_layout.setContentsMargins(0, 0, 0, 0)
+        update_layout.setSpacing(8)
+        update_layout.addWidget(self.settings_update_open)
+        update_layout.addWidget(self.settings_update)
+        card.add(
+            SettingRow(
+                "repopull updates",
+                "Asks GitHub for the newest release. This build never installs "
+                "anything by itself.",
+                update_controls,
+            )
+        )
+
+        self.settings_update_note = QLabel("Not checked in this session.")
+        self.settings_update_note.setObjectName("SettingHint")
+        self.settings_update_note.setWordWrap(True)
+        card.add_note(self.settings_update_note)
+
         self.settings_login_note = QLabel("")
         self.settings_login_note.setObjectName("SettingHint")
         self.settings_login_note.setWordWrap(True)
@@ -1026,6 +1089,53 @@ class MainWindow(QMainWindow):
             self._refresh_autostart()
             return
         self._apply_autostart(state, target)
+
+    def _check_for_updates(self) -> None:
+        """Ask GitHub in the background; the window never waits on the network."""
+        if self._update_task is not None:
+            return
+        self.settings_update.setEnabled(False)
+        self.settings_update_note.setText("Checking GitHub…")
+        task = UpdateTask()
+        task.signals.finished.connect(self._on_update_finished)
+        task.signals.failed.connect(self._on_update_failed)
+        self._update_task = task
+        QThreadPool.globalInstance().start(task)
+
+    def _on_update_finished(self, release: object) -> None:
+        self._update_task = None
+        self.settings_update.setEnabled(True)
+        if not isinstance(release, Release):
+            self._on_update_failed("unexpected answer from GitHub")
+            return
+        self._release = release
+        if is_newer(release):
+            self.settings_update_open.setVisible(True)
+            self.settings_update_note.setText(
+                f"{release.version} is available; this build is {__version__}."
+            )
+            return
+        self.settings_update_open.setVisible(False)
+        self.settings_update_note.setText(
+            f"repopull {__version__} is the latest release."
+        )
+
+    def _on_update_failed(self, message: str) -> None:
+        self._update_task = None
+        self.settings_update.setEnabled(True)
+        self.settings_update_open.setVisible(False)
+        self.settings_update_note.setText(f"Could not check: {message}")
+
+    def _open_release_page(self) -> None:
+        if self._release is None:
+            return
+        QDesktopServices.openUrl(QUrl(self._release.page))
+
+    def _check_updates_from_tray(self) -> None:
+        """Show where the answer will appear, then ask."""
+        self._show_settings()
+        self._select_settings_section(SETTINGS_SECTIONS.index("Startup"))
+        self._check_for_updates()
 
     def _build_settings_network(self, column: QVBoxLayout) -> None:
         card = SettingsCard("Network")
@@ -2508,12 +2618,15 @@ class MainWindow(QMainWindow):
         self._auto_pause_action.setCheckable(True)
         self._auto_pause_action.setEnabled(self.config.auto_refresh_s > 0)
         self._auto_pause_action.toggled.connect(self._set_auto_paused)
+        update_action = QAction("Check for updates…", self)
+        update_action.triggered.connect(self._check_updates_from_tray)
         quit_action = QAction("Quit", self)
         quit_action.triggered.connect(self._begin_quit)
         menu.addAction(open_action)
         menu.addAction(refresh_action)
         menu.addAction(self._auto_pause_action)
         menu.addSeparator()
+        menu.addAction(update_action)
         menu.addAction(quit_action)
         tray.setContextMenu(menu)
         tray.activated.connect(self._on_tray_activated)

@@ -103,6 +103,18 @@ The Rust decision remains gated and no Rust is built.
   been rebuilt yet: the next `make appimage` is the first to carry it, and its
   built-in smoke test is the proof. 28 autostart tests and 9 GUI tests, 386
   total.
+- **Updates (unreleased):** `updates.py` reads
+  `api.github.com/repos/EricBright/repopull/releases/latest` with an injected
+  fetcher for tests; `version --check` dispatching before the config loads is
+  the CLI side, and **Check now** in Settings → Startup plus "Check for
+  updates…" in the tray is the GUI side, running on the thread pool. Exit `3`
+  means "newer release exists". The build embeds
+  `gh-releases-zsync|EricBright|repopull|latest|repopull-*-x86_64.AppImage.zsync`
+  and keeps the `.zsync` appimagetool produces, after checking that its `SHA-1`
+  matches the image. Measured on the 0.7.0 image: a `.zsync` costs 263 KB, an
+  overwritten 1 MB region downloads 1,001,472 bytes, and an 8 KB insertion
+  (which shifts everything after it) downloads 2048 bytes. 14 update tests, 5
+  CLI tests, 6 GUI tests.
 - **Next:** nothing is in flight. The completion and startup work would ship as
   0.8.0, and the only known follow-ups are native zsh completion, a `--hidden`
   start that waits for a late tray host, and the accepted gaps in

@@ -15,9 +15,11 @@ import urllib.request
 from pathlib import Path
 
 try:
+    from elfsections import read_section
     from trim_appdir import IMAGE_SIZE_CEILING, TrimError, trim_appdir
 except ImportError:  # imported by tests instead of executed as a script
     sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from elfsections import read_section
     from trim_appdir import IMAGE_SIZE_CEILING, TrimError, trim_appdir
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,6 +27,15 @@ PACKAGING = ROOT / "packaging"
 BUILD = ROOT / "build" / "appimage"
 CACHE = ROOT / "build" / "downloads"
 RUNTIME_VARIABLES = ("APPDIR", "APPIMAGE", "ARGV0", "OWD")
+
+UPDATE_INFORMATION = (
+    "gh-releases-zsync|EricBright|repopull|latest|repopull-*-x86_64.AppImage.zsync"
+)
+"""Where AppImageUpdate and Gear Lever look for a newer release."""
+
+RELEASE_ASSET_URL = (
+    "https://github.com/EricBright/repopull/releases/download/v{version}/{name}"
+)
 
 
 def run(*args: str, cwd: Path = ROOT, env: dict[str, str] | None = None) -> None:
@@ -50,6 +61,22 @@ def download(item: dict[str, str]) -> Path:
             f"Checksum mismatch: {path}. Remove it and review downloads.json."
         )
     return path
+
+
+def check_zsync(zsync: Path, image: Path) -> None:
+    """Fail when the control file does not describe this exact image."""
+    with image.open("rb") as source:
+        expected = hashlib.file_digest(source, "sha1").hexdigest()
+    recorded = ""
+    for line in zsync.read_bytes().split(b"\n"):
+        if line.startswith(b"SHA-1:"):
+            recorded = line.split(b":", 1)[1].strip().decode("ascii", "replace")
+            break
+    if recorded != expected:
+        raise SystemExit(
+            f"{zsync.name} does not describe {image.name}: "
+            f"SHA-1 {recorded or '(missing)'} != {expected}"
+        )
 
 
 def main() -> None:
@@ -197,6 +224,7 @@ def main() -> None:
         output = ROOT / "dist"
         output.mkdir(exist_ok=True)
         image = output / f"repopull-{version}-x86_64.AppImage"
+        zsync = output / f"{image.name}.zsync"
         staged_image = stage / image.name
         os.environ["ARCH"] = "x86_64"
         os.environ["VERSION"] = version
@@ -208,6 +236,10 @@ def main() -> None:
             "--comp",
             "zstd",
             "--no-appstream",
+            "--updateinformation",
+            UPDATE_INFORMATION,
+            "--file-url",
+            RELEASE_ASSET_URL.format(version=version, name=image.name),
             str(appdir),
             str(staged_image),
             cwd=stage,
@@ -221,6 +253,29 @@ def main() -> None:
             )
         staged_image.replace(image)
         image.chmod(0o755)
+
+        embedded = read_section(image, ".upd_info")
+        if embedded is None or UPDATE_INFORMATION.encode() not in embedded:
+            raise SystemExit(
+                "the image carries no update information; appimagetool "
+                "ignored --updateinformation"
+            )
+        written = [
+            candidate
+            for candidate in (
+                Path.home() / f"{image.name}.zsync",
+                stage / f"{image.name}.zsync",
+            )
+            if candidate.is_file()
+        ]
+        if len(written) != 1:
+            raise SystemExit(
+                "appimagetool produced no .zsync beside the image. It runs "
+                "zsyncmake with the user's home as its working directory, so "
+                "check --updateinformation and --file-url still behave."
+            )
+        written[0].replace(zsync)
+        check_zsync(zsync, image)
 
     smoke_home = BUILD / "smoke-home"
     # A previous build's root-state file would make the smoke test refuse the
@@ -266,8 +321,12 @@ def main() -> None:
 
     with image.open("rb") as source:
         digest = hashlib.file_digest(source, "sha256").hexdigest()
-    (output / "SHA256SUMS.txt").write_text(f"{digest}  {image.name}\n")
-    print(f"Built {image} ({size / 1_000_000:.1f} MB)")
+    with zsync.open("rb") as source:
+        zsync_digest = hashlib.file_digest(source, "sha256").hexdigest()
+    (output / "SHA256SUMS.txt").write_text(
+        f"{digest}  {image.name}\n{zsync_digest}  {zsync.name}\n"
+    )
+    print(f"Built {image} ({size / 1_000_000:.1f} MB) and {zsync.name}")
 
 
 if __name__ == "__main__":

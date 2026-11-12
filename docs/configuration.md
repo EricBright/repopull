@@ -194,7 +194,8 @@ Commands:
 | `sync --behind` | Sync only repositories the last report found behind; up-to-date ones are not rechecked. |
 | `sync --force` | Fetch, then hard-reset selected repos to their upstream. |
 | `report` | Print `logs/latest.log`. |
-| `version` | Print the version. |
+| `version` | Print the version. Takes no config, so a broken `config.toml` cannot block it. |
+| `version --check` | Ask GitHub for the newest published release. Prints the version, then either "latest release" or the newer one and its release page. Downloads nothing. |
 | `completions SHELL` | Print a completion script for `bash` or `fish`. |
 
 `status` and `sync` accept repeatable `--only GLOB`, matched against the relative
@@ -240,6 +241,7 @@ cannot be checked without zsh installed.
 | `0` | No errors. Skips are fine. |
 | `1` | At least one repository ended in `error`. |
 | `2` | Fatal: bad config, missing root, no repos, or the lock is held. |
+| `3` | `version --check` found a newer release. The check itself succeeded. |
 
 ## Examples
 

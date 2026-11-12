@@ -29,6 +29,12 @@
   the library is on an external disk; narrow a run with `--only GLOB` instead.
 - Completion ships for bash and fish. Zsh uses its `bashcompinit` emulation of
   the bash script; there is no native zsh completion.
+- repopull never replaces its own image. **version --check** and the Settings
+  check only report; installing the new AppImage is the user's job, or Gear
+  Lever's once it sees the embedded update information.
+- The update check is a GitHub API call: it needs network, the unauthenticated
+  rate limit applies, and a failed check says so instead of retrying in the
+  background.
 - Autostart is a per-user XDG `.desktop` entry, not a systemd unit: repopull
   starts once at login and is not restarted if it later exits. Moving the
   AppImage is repaired on the next launch, but deleting it leaves an entry that

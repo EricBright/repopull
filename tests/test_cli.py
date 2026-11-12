@@ -16,6 +16,86 @@ from repopull.cli import main
 from repopull.models import Outcome, Report, Row
 from repopull.report import write_log
 from repopull.runtime import run_lock
+from repopull.updates import Release, UpdateError, Version
+
+
+def _release(tag: str) -> Release:
+    """A release as the check would parse it, without touching the network."""
+    version = Version(*[int(part) for part in tag.lstrip("v").split(".")])
+    return Release(
+        version=version,
+        tag=tag,
+        page=f"https://example.invalid/tag/{tag}",
+        notes="",
+        published="2026-11-20T12:00:00Z",
+        asset=f"repopull-{version}-x86_64.AppImage",
+        download=None,
+    )
+
+
+class UpdateCheckTests(unittest.TestCase):
+    def test_check_reports_the_running_version_as_current(self) -> None:
+        out = io.StringIO()
+        with patch("repopull.cli.latest_release", return_value=_release("v0.7.0")):
+            with contextlib.redirect_stdout(out):
+                code = main(["version", "--check"])
+
+        self.assertEqual(code, 0)
+        self.assertIn("repopull 0.7.0", out.getvalue())
+        self.assertIn("Latest GitHub release: 0.7.0", out.getvalue())
+        self.assertIn("up to date", out.getvalue())
+
+    def test_check_reports_a_newer_release_with_exit_code_three(self) -> None:
+        out = io.StringIO()
+        with patch("repopull.cli.latest_release", return_value=_release("v0.8.0")):
+            with contextlib.redirect_stdout(out):
+                code = main(["version", "--check"])
+
+        self.assertEqual(code, 3)
+        self.assertIn("Latest GitHub release: 0.8.0", out.getvalue())
+        self.assertIn("never replaces itself", out.getvalue())
+
+    def test_check_failure_is_fatal_but_says_so(self) -> None:
+        errors = io.StringIO()
+        with patch(
+            "repopull.cli.latest_release",
+            side_effect=UpdateError("could not reach GitHub: offline"),
+        ):
+            with (
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(errors),
+            ):
+                code = main(["version", "--check"])
+
+        self.assertEqual(code, 2)
+        self.assertIn("could not check for updates", errors.getvalue())
+
+    def test_version_needs_no_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            broken = Path(tmp) / "config.toml"
+            broken.write_text("root = [unterminated\n", encoding="utf-8")
+            out = io.StringIO()
+
+            with contextlib.redirect_stdout(out):
+                code = main(["--config", str(broken), "version"])
+
+            self.assertEqual(code, 0)
+            self.assertIn("repopull", out.getvalue())
+
+    def test_check_needs_no_config_either(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            broken = Path(tmp) / "config.toml"
+            broken.write_text("root = [unterminated\n", encoding="utf-8")
+            out = io.StringIO()
+
+            with patch(
+                "repopull.cli.latest_release", return_value=_release("v0.7.0")
+            ):
+                with contextlib.redirect_stdout(out):
+                    code = main(["--config", str(broken), "version", "--check"])
+
+            self.assertEqual(code, 0)
+            self.assertIn("Latest GitHub release", out.getvalue())
 
 
 class SyncBehindTests(unittest.TestCase):

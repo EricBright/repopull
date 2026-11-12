@@ -7,6 +7,7 @@ the source-import guard without needing a 245 MB PySide6 install.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import re
 import sys
@@ -24,6 +25,16 @@ trim = importlib.util.module_from_spec(_SPEC)
 # dataclass(slots=True) looks the class's module up in sys.modules on 3.13.
 sys.modules[_SPEC.name] = trim
 _SPEC.loader.exec_module(trim)
+
+_ELF_SPEC = importlib.util.spec_from_file_location(
+    "elfsections", ROOT / "packaging" / "elfsections.py"
+)
+assert _ELF_SPEC is not None and _ELF_SPEC.loader is not None
+elf = importlib.util.module_from_spec(_ELF_SPEC)
+sys.modules[_ELF_SPEC.name] = elf
+_ELF_SPEC.loader.exec_module(elf)
+
+sys.path.insert(0, str(ROOT / "packaging"))
 
 
 def _fake_appdir(base: Path) -> tuple[Path, Path, Path]:
@@ -201,6 +212,49 @@ class TrimAppDirTests(unittest.TestCase):
             with patch.object(trim.shutil, "which", return_value=None):
                 with self.assertRaisesRegex(trim.TrimError, "readelf"):
                     trim._prune_qt_libraries(appdir, pyside, qt)
+
+
+class ElfSectionTests(unittest.TestCase):
+    """The build reads the image's .upd_info back with these helpers."""
+
+    def test_reads_a_section_from_a_real_binary(self) -> None:
+        text = elf.read_section(Path(sys.executable), ".text")
+        self.assertIsNotNone(text)
+        assert text is not None
+        self.assertGreater(len(text), 0)
+
+    def test_missing_section_is_none(self) -> None:
+        self.assertIsNone(
+            elf.read_section(Path(sys.executable), ".no-such-section")
+        )
+
+    def test_a_non_elf_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "not-elf"
+            path.write_text("hello", encoding="utf-8")
+            with self.assertRaises(elf.ElfError):
+                elf.read_section(path, ".text")
+
+    def test_zsync_must_describe_the_image(self) -> None:
+        from build_appimage import check_zsync
+
+        with tempfile.TemporaryDirectory() as tmp:
+            image = Path(tmp) / "app.AppImage"
+            zsync = Path(tmp) / "app.AppImage.zsync"
+            image.write_bytes(b"payload")
+            digest = hashlib.sha1(b"payload").hexdigest()
+            zsync.write_text(
+                f"zsync: 0.6.5\nFilename: app.AppImage\nSHA-1: {digest}\n",
+                encoding="utf-8",
+            )
+
+            check_zsync(zsync, image)
+
+            zsync.write_text(
+                f"zsync: 0.6.5\nSHA-1: {'0' * 40}\n", encoding="utf-8"
+            )
+            with self.assertRaises(SystemExit):
+                check_zsync(zsync, image)
 
 
 if __name__ == "__main__":

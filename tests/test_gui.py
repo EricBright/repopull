@@ -31,7 +31,7 @@ if HAVE_PYSIDE:
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QMessageBox
 
-    from repopull import autostart
+    from repopull import __version__, autostart
     from repopull.config import Config, load_config, save_config
     from repopull.diagnostics import LfsStatus
     from repopull.gui.jobs import RunTask
@@ -43,6 +43,7 @@ if HAVE_PYSIDE:
     from repopull.gui.instance import ask_to_show
     from repopull.gui.window import DiscoveryTask, MainWindow
     from repopull.rootstate import RootStateCheck
+    from repopull.updates import Release, Version
     from repopull.models import Outcome, Report, Row
     from repopull.refresh import SuspendDetector
     from repopull.report import write_log
@@ -1533,6 +1534,107 @@ if HAVE_PYSIDE:
                         window.settings_login_hidden._position, 1.0
                     )
                     window.close()
+
+        def _release(self, tag: str = "v0.8.0") -> Release:
+            version = Version(
+                *[int(part) for part in tag.lstrip("v").split(".")]
+            )
+            return Release(
+                version=version,
+                tag=tag,
+                page=f"https://example.invalid/tag/{tag}",
+                notes="",
+                published="2026-11-20T12:00:00Z",
+                asset=None,
+                download=None,
+            )
+
+        def test_update_check_reports_a_newer_release(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                window = MainWindow(self._config(base, self._tree(base)))
+
+                window._on_update_finished(self._release("v0.8.0"))
+
+                self.assertIn(
+                    "0.8.0 is available", window.settings_update_note.text()
+                )
+                self.assertFalse(window.settings_update_open.isHidden())
+                window.close()
+
+        def test_update_check_reports_the_running_version_as_current(
+            self,
+        ) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                window = MainWindow(self._config(base, self._tree(base)))
+
+                window._on_update_finished(self._release(f"v{__version__}"))
+
+                self.assertIn(
+                    "is the latest release",
+                    window.settings_update_note.text(),
+                )
+                self.assertTrue(window.settings_update_open.isHidden())
+                window.close()
+
+        def test_update_check_failure_is_reported_and_recoverable(
+            self,
+        ) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                window = MainWindow(self._config(base, self._tree(base)))
+
+                window._on_update_failed("could not reach GitHub: offline")
+
+                self.assertIn(
+                    "Could not check", window.settings_update_note.text()
+                )
+                self.assertTrue(window.settings_update.isEnabled())
+                self.assertTrue(window.settings_update_open.isHidden())
+                window.close()
+
+        def test_update_check_runs_in_the_background(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                window = MainWindow(self._config(base, self._tree(base)))
+                asked: list[int] = []
+
+                def fake() -> Release:
+                    asked.append(1)
+                    return self._release("v9.9.9")
+
+                with patch(
+                    "repopull.gui.window.latest_release", side_effect=fake
+                ):
+                    window._check_for_updates()
+                    for _ in range(200):
+                        self.app.processEvents()
+                        if "9.9.9" in window.settings_update_note.text():
+                            break
+                        QTest.qWait(10)
+
+                self.assertTrue(asked)
+                self.assertIn(
+                    "9.9.9 is available",
+                    window.settings_update_note.text(),
+                )
+                self.assertTrue(window.settings_update.isEnabled())
+                window.close()
+
+        def test_tray_menu_offers_an_update_check(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                window = MainWindow(self._config(base, self._tree(base)))
+                window._tray_available = True
+                window._ensure_tray()
+
+                labels = [
+                    action.text() for action in window.tray_menu.actions()
+                ]
+
+                self.assertIn("Check for updates…", labels)
+                window.request_quit()
 
         def test_a_moved_executable_is_not_offered(self) -> None:
             with tempfile.TemporaryDirectory() as tmp:

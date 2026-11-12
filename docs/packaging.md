@@ -53,7 +53,28 @@ are kept; the build also refuses any image above 60 MB.
 
 `tests/test_packaging.py` ties the keep-list to the Qt modules imported under
 `src/`, so adding a new Qt module to the app fails the suite until the trim is
-updated. The trim is written for repopull; it does not copy AppGlider's GPL
+updated.
+
+## Update information
+
+Every image carries an update-information string in its `.upd_info` section,
+written by `appimagetool`:
+
+```
+gh-releases-zsync|EricBright|repopull|latest|repopull-*-x86_64.AppImage.zsync
+```
+
+That is what AppImageUpdate and Gear Lever read to find a newer release without
+a repository. The build also publishes the matching `.zsync` control file next
+to the image, and `SHA256SUMS.txt` covers both files, so a download can be
+checked against the sums in the release.
+
+`appimagetool` writes the `.zsync` with the `zsyncmake` it bundles, but it runs
+that tool from the user's home directory whatever the build's working directory
+is, so the file appears there; the build moves it into `dist/` and refuses to
+finish unless the control file's `SHA-1` matches the image it was built from.
+The file URL recorded inside is the release-asset URL for that tag, not a
+relative path. The trim is written for repopull; it does not copy AppGlider's GPL
 code.
 
 ## Run

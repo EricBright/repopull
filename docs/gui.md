@@ -162,7 +162,7 @@ spinning hard disk. Manual runs still work. When the window returns, one check
 runs if the interval is due. In-flight runs are not cancelled.
 
 With background mode on, the symbolic tray menu offers Open, Refresh status now,
-Pause/Resume automatic refresh, and Quit. Quit cancels the current git command,
+Pause/Resume automatic refresh, Check for updates…, and Quit. Quit cancels the current git command,
 waits for the worker to unwind, and releases the locks. A cancelled git command
 can leave that repository with a lock or partial checkout; the next run reports
 it rather than forcing a repair. A second GUI launch does not start another
@@ -184,6 +184,12 @@ broken entry. If the recorded program disappears, the entry is repaired on the
 next launch, keeping its hidden flag; a working entry is never repointed just
 because a different build was launched. Paths with spaces, quotes, `$`, `%`, or
 newlines are quoted and escaped as the Desktop Entry spec requires.
+
+**Startup** also holds the update check: **Check now** asks GitHub for the newest
+release in the background and the note under it reports "latest" or the newer
+version with an **Open release page** button. Nothing is downloaded or
+installed. The check needs no `config.toml`, and the tray entry opens this
+section before running it.
 
 The **Git LFS** row shows whether `git-lfs` is installed and enabled; **Help…**
 explains what LFS is and shows the install command for the detected distribution
@@ -224,6 +230,8 @@ The GUI holds the same `logs/.lock` as the CLI, so two runs cannot overlap.
 - Keyboard navigation is basic.
 - Autostart is a per-user XDG entry, not a systemd unit. repopull starts once at
   login; if it exits later it stays down until you launch it again.
+- Nothing checks for a newer repopull on its own: the check runs when you ask
+  for it, from the window or the tray.
 - `--hidden` falls back to showing the window when no tray icon is available,
   because a windowless, tray-less process could not be reached at all. That
   includes a session whose tray host starts after repopull does.

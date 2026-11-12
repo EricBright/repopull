@@ -46,6 +46,7 @@ from repopull.rootstate import (
 )
 from repopull.runtime import LockError, run_lock
 from repopull.sync import status_report, sync_report
+from repopull.updates import UpdateError, is_newer, latest_release
 
 
 def _build_global_parser() -> argparse.ArgumentParser:
@@ -132,7 +133,12 @@ def _build_command_parser() -> argparse.ArgumentParser:
     )
 
     sub.add_parser("report", help="print the last report")
-    sub.add_parser("version", help="print the version")
+    version = sub.add_parser("version", help="print the version")
+    version.add_argument(
+        "--check",
+        action="store_true",
+        help="ask GitHub for a newer release (needs no config)",
+    )
 
     completions = sub.add_parser(
         "completions", help="print a shell completion script"
@@ -141,6 +147,27 @@ def _build_command_parser() -> argparse.ArgumentParser:
         "shell", choices=SHELLS, help="shell to write the script for"
     )
     return parser
+
+
+EXIT_UPDATE_AVAILABLE = 3
+"""`version --check` exit code when a newer release exists."""
+
+
+def _check_release() -> int:
+    """Ask GitHub for the newest release. 0 current, 3 newer, 2 failure."""
+    try:
+        release = latest_release()
+    except UpdateError as exc:
+        return _fail(f"could not check for updates: {exc}")
+    if is_newer(release):
+        print(f"Latest GitHub release: {release.version} · {release.page}")
+        print(
+            "This build never replaces itself: download the new AppImage and "
+            "run that file instead of the old one."
+        )
+        return EXIT_UPDATE_AVAILABLE
+    print(f"Latest GitHub release: {release.version} · you are up to date.")
+    return 0
 
 
 def _fail(message: str) -> int:
@@ -343,6 +370,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(render_completions(args.shell), end="")
         return 0
 
+    # Neither the version nor the update check reads the watched folder, so a
+    # broken config must not stand between the user and "is there a newer one?".
+    if args.command == "version":
+        print(f"repopull {__version__}")
+        return _check_release() if args.check else 0
+
     try:
         config = load_config(
             config_path=global_args.config, root_override=global_args.root
@@ -359,10 +392,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return run_menu(config)
         except LockError as exc:
             return _fail(str(exc))
-
-    if args.command == "version":
-        print(f"repopull {__version__}")
-        return 0
 
     if args.command == "report":
         path = config.log_dir / "latest.log"

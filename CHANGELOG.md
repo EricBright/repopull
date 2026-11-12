@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- `repopull version --check` and a **Check now** row under Settings → Startup
+  report whether a newer release exists. The check reads the GitHub releases
+  API, downloads nothing, needs no `config.toml`, and exits `3` when a newer
+  release is found.
+- Release images now carry `gh-releases-zsync` update information and ship a
+  `.zsync`, so AppImageUpdate and Gear Lever can update an installed copy with a
+  delta download. repopull still never replaces its own image.
 - **Launch at login** and **Open hidden in the tray** in Settings → Startup. The
   switches write or delete `repopull.desktop` in your desktop's autostart
   folder, and the file is the only record, so disabling it in the desktop's own

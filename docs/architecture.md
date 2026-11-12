@@ -24,6 +24,7 @@ between discovery, git access, decision-making, and presentation.
 | `cli.py` | Argument parsing, dispatch, exit codes, the run lock. |
 | `completions.py` | Declares the command and option names and renders the bash and fish completion scripts. |
 | `runtime.py` | `flock`-based single-run guard. |
+| `updates.py` | Reads the newest GitHub release: version parsing, the release probe, and typed errors. Never downloads or installs. |
 
 `git.py` is deliberately the only module that runs subprocesses. Everything else
 works with plain data, which is what makes the sync logic testable without a
@@ -145,6 +146,8 @@ writing a separate JSON file.
   and the pure automatic-refresh decision table.
 - `tests/test_mounts.py`, `tests/test_rootstate.py`, `tests/test_uistate.py` —
   mount probing, root identity, and remembered GUI state.
+- `tests/test_updates.py` — version ordering including release candidates, the
+  release JSON shape, and every failure path, with an injected fetcher.
 - `tests/test_autostart.py` — Desktop Entry quoting round-trips, `Hidden`/
   `X-GNOME-Autostart-enabled` handling, target resolution, and stale-path
   repair, all against temporary directories.

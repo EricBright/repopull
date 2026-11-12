@@ -42,6 +42,7 @@ COMMAND_OPTIONS: dict[str, dict[str, str]] = {
     },
     "repair-root": {"--yes": "write the new identity"},
     "status": {"--only": "limit to labels matching this glob"},
+    "version": {"--check": "ask GitHub for a newer release"},
     "sync": {
         "--only": "limit to labels matching this glob",
         "--force": "hard reset selected repositories",

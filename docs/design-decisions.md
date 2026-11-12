@@ -753,4 +753,36 @@ that fails at login, which the desktop panel can remove. Hidden start still
 depends on the tray host existing at login; when it does not, the window is
 shown, and the limitation is documented rather than papered over.
 
+## 43. Tell the user about a new release; never replace the image
+
+**Context:** An AppImage can update itself: a `.zsync` lets a client download
+only the changed blocks, and this build already ships a 46 MB image that users
+have to re-download for every release. The temptation is a background updater
+that keeps everyone current. That would make the updater the most valuable
+attack surface in the project: it pulls code from the network and executes it,
+while the release artifact is built by hand on one machine and CI never touches
+it. A checksum published beside the download does not help — whoever can replace
+the asset can replace the checksum. Real protection needs a signature key, and
+key handling is a decision of its own.
+
+**Decision:** The image carries `gh-releases-zsync` update information in its
+`.upd_info` section and each release publishes the matching `.zsync`, so
+AppImageUpdate and Gear Lever can update an installed copy, with delta downloads,
+without repopull implementing anything. Inside repopull, `version --check` and
+Settings → Startup → **Check now** only *report*: they read the GitHub releases
+API, compare a parsed version (release candidates sort below their final
+release), print or show the result, and exit 3 when a newer release exists. No
+code downloads, verifies, or replaces the running image. The build verifies that
+the control file describes the image it was built from, because a mismatched
+`.zsync` fails silently in the client.
+
+**Consequences:** Users get "is there a newer one?" from the app and the actual
+update from a tool that already does it well, and repopull's promise — it does
+not modify anything it did not create — stays intact. The check is one more
+network call that is not git, so it is manual: nothing checks at startup, and a
+failure is reported where the user asked, never as a background retry. Silent
+self-replacement stays out until there is a signing key, a stable installed
+filename (the autostart entry records the current one), and a decision about
+what a half-finished update may leave behind.
+
 For the full documentation index, see [README.md](../README.md#documentation-index).
