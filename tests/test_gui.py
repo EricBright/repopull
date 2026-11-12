@@ -1554,10 +1554,10 @@ if HAVE_PYSIDE:
                 base = Path(tmp)
                 window = MainWindow(self._config(base, self._tree(base)))
 
-                window._on_update_finished(self._release("v0.8.0"))
+                window._on_update_finished(self._release("v99.0.0"))
 
                 self.assertIn(
-                    "0.8.0 is available", window.settings_update_note.text()
+                    "99.0.0 is available", window.settings_update_note.text()
                 )
                 self.assertFalse(window.settings_update_open.isHidden())
                 window.close()

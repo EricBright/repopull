@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import support
+from repopull import __version__
 from repopull.cli import main
 from repopull.models import Outcome, Report, Row
 from repopull.report import write_log
@@ -36,23 +37,25 @@ def _release(tag: str) -> Release:
 class UpdateCheckTests(unittest.TestCase):
     def test_check_reports_the_running_version_as_current(self) -> None:
         out = io.StringIO()
-        with patch("repopull.cli.latest_release", return_value=_release("v0.7.0")):
+        running = _release(f"v{__version__}")
+        with patch("repopull.cli.latest_release", return_value=running):
             with contextlib.redirect_stdout(out):
                 code = main(["version", "--check"])
 
         self.assertEqual(code, 0)
-        self.assertIn("repopull 0.7.0", out.getvalue())
-        self.assertIn("Latest GitHub release: 0.7.0", out.getvalue())
+        self.assertIn(f"repopull {__version__}", out.getvalue())
+        self.assertIn(f"Latest GitHub release: {__version__}", out.getvalue())
         self.assertIn("up to date", out.getvalue())
 
     def test_check_reports_a_newer_release_with_exit_code_three(self) -> None:
         out = io.StringIO()
-        with patch("repopull.cli.latest_release", return_value=_release("v0.8.0")):
+        newer = _release("v99.0.0")
+        with patch("repopull.cli.latest_release", return_value=newer):
             with contextlib.redirect_stdout(out):
                 code = main(["version", "--check"])
 
         self.assertEqual(code, 3)
-        self.assertIn("Latest GitHub release: 0.8.0", out.getvalue())
+        self.assertIn("Latest GitHub release: 99.0.0", out.getvalue())
         self.assertIn("never replaces itself", out.getvalue())
 
     def test_check_failure_is_fatal_but_says_so(self) -> None:
@@ -89,7 +92,8 @@ class UpdateCheckTests(unittest.TestCase):
             out = io.StringIO()
 
             with patch(
-                "repopull.cli.latest_release", return_value=_release("v0.7.0")
+                "repopull.cli.latest_release",
+                return_value=_release(f"v{__version__}"),
             ):
                 with contextlib.redirect_stdout(out):
                     code = main(["--config", str(broken), "version", "--check"])

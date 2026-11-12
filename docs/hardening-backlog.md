@@ -40,21 +40,23 @@ The Rust decision remains gated and no Rust is built.
 
 ## Current state and next session (2026-11-12)
 
-- **Release:** 0.7.0, tag `v0.7.0`;
-  <https://github.com/EricBright/repopull/releases/tag/v0.7.0>. The tree adds
-  streamed clone progress (11 tests) and the pinned CI inputs on top of the
-  0.6.0 AppDir trim, **Clone…** and third-party notices. 0.6.0 stays at tag
-  `v0.6.0`, `b30c7d9`.
-- **AppImage:** `dist/repopull-0.7.0-x86_64.AppImage`, 45,865,464 bytes,
-  SHA-256 `6bc302c6ce2b76bf6bb7efa3be12c7bd08f7e106795786903b6af3f9260704b0`.
-  The build's offscreen smoke test passed with 45 rows, and `--cli version`
-  reports 0.7.0. `--cli status` ran against the real library (two repositories,
-  both up to date) rather than a throwaway one, and the Wayland/X11 GUI pass
-  still needs a human at a screen.
-- **Checks:** 349 tests (330 at the 0.7.0 tag), 1 expected failure, mypy strict
-  clean, `make audit` clean, README 1,987 words. CI run `43126558934` is green
-  on both legs. The 0.6.0 run caught a test-only import bug on 3.13 in the first
-  tag, fixed in `b30c7d9`; the AppImage asset did not change.
+- **Release:** 0.8.0, tag `v0.8.0`;
+  <https://github.com/EricBright/repopull/releases/tag/v0.8.0>. The tree adds
+  bash/fish completions, launch at login with a hidden tray start, the release
+  check, and the zsync update metadata (349 → 414 tests). 0.7.0 stays at tag
+  `v0.7.0`, `62d6908`.
+- **AppImage:** `dist/repopull-0.8.0-x86_64.AppImage`, 46,230,008 bytes,
+  SHA-256 `f5033016...74f9ddd991`, with
+  `repopull-0.8.0-x86_64.AppImage.zsync` (158,313 bytes,
+  `cf9802e8...58b6582e`) beside it. The offscreen smoke test passed with 45
+  rows, `--cli version` reports 0.8.0, `--cli completions bash` prints a script,
+  and `--cli version --check` reached api.github.com from inside the bundled
+  Python. `readelf`-free inspection confirms `.upd_info` holds the
+  `gh-releases-zsync` string, and the build's own check confirms the `.zsync`
+  SHA-1 matches the image. The Wayland/X11 GUI pass still needs a human at a
+  screen.
+- **Checks:** 414 tests (349 at the 0.7.0 tag), 1 expected failure, mypy strict
+  clean, `make audit` clean, README 1,995 words.
 - **Trim:** `packaging/trim_appdir.py`; the keep-list is tied to `src/` imports
   by `tests/test_packaging.py`, and the build refuses images over 60 MB. The
   step is an independent implementation, not AppGlider code.
@@ -85,12 +87,12 @@ The Rust decision remains gated and no Rust is built.
   cooldown. The workflow holds no secrets, builds no release, and the token is
   read-only, so a compromised action could lie about a test result but could
   not alter anything a user installs.
-- **Completions (unreleased):** `repopull completions bash|fish` prints a script
+- **Completions:** `repopull completions bash|fish` prints a script
   rendered from `src/repopull/completions.py`. A test compares that table with
   the real parser, so an option cannot be added without also being completed.
   Labels are not completed on purpose: that would scan the watched root on every
   TAB. 19 new tests, 349 total.
-- **Startup (unreleased):** Settings → Startup writes
+- **Startup:** Settings → Startup writes
   `$XDG_CONFIG_HOME/autostart/repopull.desktop`; the file is the only state, so
   the desktop's own autostart panel and the switches cannot disagree. `Exec`
   comes from `$APPIMAGE`, the checkout launcher, the installed `repopull-gui`,
@@ -103,7 +105,7 @@ The Rust decision remains gated and no Rust is built.
   been rebuilt yet: the next `make appimage` is the first to carry it, and its
   built-in smoke test is the proof. 28 autostart tests and 9 GUI tests, 386
   total.
-- **Updates (unreleased):** `updates.py` reads
+- **Updates:** `updates.py` reads
   `api.github.com/repos/EricBright/repopull/releases/latest` with an injected
   fetcher for tests; `version --check` dispatching before the config loads is
   the CLI side, and **Check now** in Settings → Startup plus "Check for
@@ -115,10 +117,11 @@ The Rust decision remains gated and no Rust is built.
   overwritten 1 MB region downloads 1,001,472 bytes, and an 8 KB insertion
   (which shifts everything after it) downloads 2048 bytes. 14 update tests, 5
   CLI tests, 6 GUI tests.
-- **Next:** nothing is in flight. The completion and startup work would ship as
-  0.8.0, and the only known follow-ups are native zsh completion, a `--hidden`
-  start that waits for a late tray host, and the accepted gaps in
-  [limitations.md](limitations.md).
+- **Next:** nothing is in flight. 0.8.0 is the first build that carries
+  `.upd_info` and a `.zsync`, so Gear Lever and AppImageUpdate can now update an
+  installed copy. Known follow-ups: native zsh completion, a `--hidden` start
+  that waits for a late tray host, signature-key setup before any
+  self-replacement, and the accepted gaps in [limitations.md](limitations.md).
 - **Resume with:** `make check`, `make audit`, then `make appimage` if the
   image needs rebuilding.
 

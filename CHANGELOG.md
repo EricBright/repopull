@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.0 — 2026-11-12
 
 - `repopull version --check` and a **Check now** row under Settings → Startup
   report whether a newer release exists. The check reads the GitHub releases
