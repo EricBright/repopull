@@ -10,6 +10,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from repopull import autostart
 from repopull.config import ConfigError, load_config
 
 if TYPE_CHECKING:
@@ -50,9 +51,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         metavar="PNG",
         help="render the window to a PNG and exit",
     )
+    parser.add_argument(
+        "--hidden",
+        action="store_true",
+        help="start in the system tray without showing the window",
+    )
     args = parser.parse_args(raw)
+    unattended = args.smoke_test or args.screenshot is not None
 
-    if args.smoke_test or args.screenshot is not None:
+    if unattended:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     elif sys.platform.startswith("linux") and os.environ.get("WAYLAND_DISPLAY"):
         # Qt defaults to XCB on some images; XEmbed tray icons are not shown by
@@ -62,6 +69,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     # Imported after QT_QPA_PLATFORM is set, so the offscreen platform is used.
     from PySide6.QtWidgets import QApplication
 
+    from repopull.gui.instance import ask_to_show
     from repopull.gui.theme import stylesheet
     from repopull.gui.window import MainWindow
 
@@ -88,21 +96,30 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 2
 
+    if not unattended and ask_to_show(config.log_dir):
+        # A window is already running, probably hidden: it just came forward.
+        return 0
+
     from PySide6.QtCore import QLockFile
     from PySide6.QtWidgets import QMessageBox
 
     instance = QLockFile(str(config.log_dir / ".gui.lock"))
     if not instance.tryLock(100):
+        if unattended or args.hidden:
+            return 1
         QMessageBox.warning(None, "repopull", "repopull is already running.")
         return 1
 
     try:
+        if not unattended:
+            _repair_autostart()
         window = MainWindow(
             config,
-            discover_async=not (
-                args.smoke_test or args.screenshot is not None
-            ),
+            discover_async=not unattended,
+            hidden=args.hidden,
         )
+        if not unattended:
+            window.start_instance_channel()
 
         def request_quit(*_args: object) -> None:
             window.request_quit()
@@ -127,7 +144,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"GUI smoke test: {window.visible_row_count()} rows visible")
             return 0
 
-        window.show()
+        if not window.starts_hidden:
+            window.show()
         return int(app.exec())
     finally:
         instance.unlock()
+
+
+def _repair_autostart() -> None:
+    """Repair an autostart entry whose recorded program has disappeared."""
+    target = autostart.resolve_target()
+    if target is None:
+        return
+    try:
+        autostart.refresh(autostart.entry_path(), target)
+    except OSError:
+        return

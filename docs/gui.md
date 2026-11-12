@@ -19,6 +19,8 @@ it lets `uv` provide PySide6 for that run. You can also run
 `PYTHONPATH=src python3 -m repopull.gui`.
 
 It runs natively on Wayland and X11; the platform choice is left to Qt.
+`--hidden` starts it in the system tray without showing the window; that is
+what the autostart entry uses.
 
 On first run there is **no watched folder**. Open **Settings** and choose one;
 the library then fills. Nothing is hard-coded into the app. The initial scan and its root-state identity check
@@ -163,7 +165,25 @@ With background mode on, the symbolic tray menu offers Open, Refresh status now,
 Pause/Resume automatic refresh, and Quit. Quit cancels the current git command,
 waits for the worker to unwind, and releases the locks. A cancelled git command
 can leave that repository with a lock or partial checkout; the next run reports
-it rather than forcing a repair. A second GUI launch refuses to start.
+it rather than forcing a repair. A second GUI launch does not start another
+window: it asks the running one to come forward and exits. That matters when
+the first launch is hidden in the tray, where a dialog would be the only thing
+the user ever saw.
+
+**Startup** holds two switches, saved nowhere in `config.toml`: the entry is the
+state. **Launch at login** writes `repopull.desktop` to
+`$XDG_CONFIG_HOME/autostart` (usually `~/.config/autostart`) and removes it when
+switched off; **Open hidden in the tray** adds `--hidden` to its `Exec` line.
+Because the file is the only record, disabling the entry in the desktop's own
+autostart panel shows up here as off, and repopull never resurrects it. The
+command written is the running AppImage (`$APPIMAGE`), the checkout launcher,
+the installed `repopull-gui`, or `python -m repopull.gui`, in that order;
+nothing inside a mounted AppDir is used, because it is gone by the next login.
+When no stable command exists the switches explain why instead of writing a
+broken entry. If the recorded program disappears, the entry is repaired on the
+next launch, keeping its hidden flag; a working entry is never repointed just
+because a different build was launched. Paths with spaces, quotes, `$`, `%`, or
+newlines are quoted and escaped as the Desktop Entry spec requires.
 
 The **Git LFS** row shows whether `git-lfs` is installed and enabled; **Help…**
 explains what LFS is and shows the install command for the detected distribution
@@ -180,7 +200,7 @@ The window/taskbar icon and the sidebar mark are documented in
 
 ![Git LFS help](previews/gui-lfs-help.png)
 
-![Settings with the Watching section selected](previews/gui-settings.png)
+![Settings, with the Refresh section selected](previews/gui-settings.png)
 
 ## Safety
 
@@ -202,6 +222,11 @@ The GUI holds the same `logs/.lock` as the CLI, so two runs cannot overlap.
   Refresh switches and the interval save immediately.
 - The window is dark-only.
 - Keyboard navigation is basic.
+- Autostart is a per-user XDG entry, not a systemd unit. repopull starts once at
+  login; if it exits later it stays down until you launch it again.
+- `--hidden` falls back to showing the window when no tray icon is available,
+  because a windowless, tray-less process could not be reached at all. That
+  includes a session whose tray host starts after repopull does.
 
 ## Window lifetime
 
@@ -210,7 +235,9 @@ cancels the task, ignores the close, and quits after the task reports; the
 window stays alive until then. Worker signals are connected to the window and
 auto-disconnect when it is destroyed, so a finished task cannot keep a deleted
 window alive. Dialogs are modal and parented to the window, except the
-"already running" warning shown before a window exists.
+"already running" warning, which now appears only when the running instance
+does not answer on the channel (an older build, or one that is wedged);
+otherwise the second launch simply raises the window.
 
 `make soak-qt` creates and destroys the real window 100 times and fails if a
 Python wrapper, C++ object, or child widget survives. `tests/test_gui.py` covers

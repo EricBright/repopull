@@ -38,7 +38,7 @@ Action 5 adds CI guardrails. `make test` runs under `-X dev -X faulthandler
 update and pin policy is in [packaging.md](packaging.md#updates-and-dependency-checks).
 The Rust decision remains gated and no Rust is built.
 
-## Current state and next session (2026-11-11)
+## Current state and next session (2026-11-12)
 
 - **Release:** 0.7.0, tag `v0.7.0`;
   <https://github.com/EricBright/repopull/releases/tag/v0.7.0>. The tree adds
@@ -90,8 +90,22 @@ The Rust decision remains gated and no Rust is built.
   the real parser, so an option cannot be added without also being completed.
   Labels are not completed on purpose: that would scan the watched root on every
   TAB. 19 new tests, 349 total.
-- **Next:** nothing is in flight. The completion work would ship as 0.8.0, and
-  the only known follow-ups are native zsh completion and the accepted gaps in
+- **Startup (unreleased):** Settings → Startup writes
+  `$XDG_CONFIG_HOME/autostart/repopull.desktop`; the file is the only state, so
+  the desktop's own autostart panel and the switches cannot disagree. `Exec`
+  comes from `$APPIMAGE`, the checkout launcher, the installed `repopull-gui`,
+  or `python -m repopull.gui`, never from a mounted AppDir, and quoting handles
+  the spec's two escape passes; an entry is repaired only when its recorded
+  program has disappeared. `--hidden` falls back to a visible window without a
+  tray, and a second launch
+  raises the running window over a local socket in the log directory instead of
+  showing a dialog. QtNetwork joined the AppImage keep-list, but no image has
+  been rebuilt yet: the next `make appimage` is the first to carry it, and its
+  built-in smoke test is the proof. 28 autostart tests and 9 GUI tests, 386
+  total.
+- **Next:** nothing is in flight. The completion and startup work would ship as
+  0.8.0, and the only known follow-ups are native zsh completion, a `--hidden`
+  start that waits for a late tray host, and the accepted gaps in
   [limitations.md](limitations.md).
 - **Resume with:** `make check`, `make audit`, then `make appimage` if the
   image needs rebuilding.

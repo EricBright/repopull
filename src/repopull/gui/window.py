@@ -59,7 +59,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from repopull import __version__, git
+from repopull import __version__, autostart, git
 from repopull.clone import CloneResult
 from repopull.config import (
     Config,
@@ -73,6 +73,7 @@ from repopull.config import (
 from repopull.discovery import DiscoveryError, discover_repos
 from repopull.diagnostics import LfsStatus, lfs_status
 from repopull.gui.clone_dialog import CloneDialog
+from repopull.gui.instance import Channel
 from repopull.gui.jobs import CloneTask, RunTask
 from repopull.gui.lfs_help import LfsHelpDialog
 from repopull.gui.rows import RepoRow, RowView, row_view, unchecked_view
@@ -176,11 +177,17 @@ class MainWindow(QMainWindow):
     """One window that reads the same config and report files as the CLI."""
 
     def __init__(
-        self, config: Config, *, discover_async: bool = False
+        self,
+        config: Config,
+        *,
+        discover_async: bool = False,
+        hidden: bool = False,
     ) -> None:
         super().__init__()
         self.config = config
         self._discover_async = discover_async
+        self._hidden_requested = hidden
+        self._channel: Channel | None = None
         self._discovery_generation = 0
         self._discovery_task: DiscoveryTask | None = None
         self._discovery_callback: Callable[[], None] | None = None
@@ -207,6 +214,7 @@ class MainWindow(QMainWindow):
         self.clone_task: CloneTask | None = None
         self._quit_requested = False
         self._loading_settings = False
+        self._loading_autostart = False
         self._loading_holds = False
         self._settings_section = 0
         self._settings_dirty = False
@@ -678,6 +686,7 @@ class MainWindow(QMainWindow):
         builders = (
             self._build_settings_watching,
             self._build_settings_refresh,
+            self._build_settings_startup,
             self._build_settings_network,
             self._build_settings_updates,
             self._build_settings_storage,
@@ -700,7 +709,8 @@ class MainWindow(QMainWindow):
         self.reset_button.setObjectName("Ghost")
         self.reset_button.setToolTip(
             "Restore the shipped defaults in the form, then save them with the "
-            "footer button."
+            "footer button. Startup switches apply immediately and are left "
+            "alone."
         )
         self.reset_button.clicked.connect(self._reset_settings)
         actions.addWidget(self.reset_button)
@@ -897,6 +907,125 @@ class MainWindow(QMainWindow):
             self._on_auto_minutes_changed
         )
         column.addWidget(card)
+
+    def _build_settings_startup(self, column: QVBoxLayout) -> None:
+        card = SettingsCard("Startup")
+
+        self.settings_login = Switch()
+        self.settings_login.setAccessibleName("Launch at login")
+        card.add(
+            SettingRow(
+                "Launch at login",
+                "Adds repopull to this desktop's autostart list.",
+                self.settings_login,
+            )
+        )
+
+        self.settings_login_hidden = Switch()
+        self.settings_login_hidden.setAccessibleName("Open hidden in the tray")
+        card.add(
+            SettingRow(
+                "Open hidden in the tray",
+                "Starts without a window; the tray icon is the only sign it is "
+                "running.",
+                self.settings_login_hidden,
+            )
+        )
+
+        self.settings_login_note = QLabel("")
+        self.settings_login_note.setObjectName("SettingHint")
+        self.settings_login_note.setWordWrap(True)
+        card.add_note(self.settings_login_note)
+
+        self.settings_login.toggled.connect(self._on_launch_at_login_toggled)
+        self.settings_login_hidden.toggled.connect(
+            self._on_launch_hidden_toggled
+        )
+        column.addWidget(card)
+
+    def _autostart_note(
+        self, state: autostart.State, target: autostart.Target | None
+    ) -> str:
+        location = autostart.entry_path().parent
+        if target is None:
+            return (
+                "No stable command to start from here. Run the AppImage, or "
+                "install repopull with pip, then reopen Settings."
+            )
+        if not state.installed:
+            return f"Not in {location}."
+        hidden = " It opens hidden." if state.hidden else ""
+        return f"Listed in {location}.{hidden}"
+
+    def _apply_autostart(
+        self, state: autostart.State, target: autostart.Target | None
+    ) -> None:
+        # A guard flag, not QSignalBlocker: the Switch animates from its own
+        # toggled signal, so blocking it would leave the knob drawn as off.
+        self._loading_autostart = True
+        try:
+            self.settings_login.setChecked(state.installed)
+            self.settings_login_hidden.setChecked(state.hidden)
+        finally:
+            self._loading_autostart = False
+        self.settings_login.setEnabled(target is not None)
+        self.settings_login_hidden.setEnabled(
+            target is not None and state.installed
+        )
+        if target is None:
+            self.settings_login.setToolTip(
+                "repopull cannot find a command that will still exist at the "
+                "next login."
+            )
+        else:
+            self.settings_login.setToolTip(
+                f"Starts {target.argv[0]} when you log in."
+            )
+        self.settings_login_note.setText(self._autostart_note(state, target))
+
+    def _refresh_autostart(self) -> None:
+        target = autostart.resolve_target()
+        self._apply_autostart(autostart.read(autostart.entry_path()), target)
+
+    def _on_launch_at_login_toggled(self, enabled: bool) -> None:
+        if self._loading_settings or self._loading_autostart:
+            return
+        target = autostart.resolve_target()
+        if target is None:
+            self._refresh_autostart()
+            return
+        path = autostart.entry_path()
+        try:
+            if enabled:
+                state = autostart.install(
+                    path, target, hidden=self.settings_login_hidden.isChecked()
+                )
+            else:
+                state = autostart.uninstall(path)
+        except OSError as exc:
+            self._flash(f"Could not update the autostart entry: {exc}")
+            self._refresh_autostart()
+            return
+        self._apply_autostart(state, target)
+
+    def _on_launch_hidden_toggled(self, hidden: bool) -> None:
+        if self._loading_settings or self._loading_autostart:
+            return
+        if not self.settings_login.isChecked():
+            return
+        target = autostart.resolve_target()
+        if target is None:
+            self._refresh_autostart()
+            return
+        try:
+            state = autostart.install(
+                autostart.entry_path(), target, hidden=hidden
+            )
+        except OSError as exc:
+            self._flash(f"Could not update the autostart entry: {exc}")
+            self._refresh_autostart()
+            return
+        self._apply_autostart(state, target)
 
     def _build_settings_network(self, column: QVBoxLayout) -> None:
         card = SettingsCard("Network")
@@ -1162,6 +1291,7 @@ class MainWindow(QMainWindow):
             self._populate_settings()
         else:
             self._refresh_lfs_status()
+            self._refresh_autostart()
         self.stack.setCurrentWidget(self.settings_page)
         self._select_settings_section(self._settings_section)
         self._save_ui_state()
@@ -1558,6 +1688,7 @@ class MainWindow(QMainWindow):
             self.config.require_git_lfs_for_lfs_repos
         )
         self._refresh_lfs_status()
+        self._refresh_autostart()
         self.settings_config_label.setText(
             str(self.config.config_path or "(built-in defaults)")
         )
@@ -2319,6 +2450,9 @@ class MainWindow(QMainWindow):
         self._quit_application()
 
     def _quit_application(self) -> None:
+        if self._channel is not None:
+            self._channel.stop()
+            self._channel = None
         if self.tray is not None:
             self.tray.hide()
         app = QApplication.instance()
@@ -2328,6 +2462,19 @@ class MainWindow(QMainWindow):
     def _maybe_quit_after_task(self) -> None:
         if self._quit_requested:
             self._quit_application()
+
+    @property
+    def starts_hidden(self) -> bool:
+        """`--hidden` only hides when a tray icon can bring the window back."""
+        return self._hidden_requested and self._tray_available
+
+    def start_instance_channel(self) -> None:
+        """Answer a second launch by showing this window instead of a dialog."""
+        if self._channel is not None:
+            return
+        channel = Channel(self.config.log_dir, self._show_from_tray, self)
+        channel.start()
+        self._channel = channel
 
     def _apply_background_mode(self) -> None:
         if not self._tray_available:

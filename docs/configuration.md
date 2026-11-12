@@ -134,6 +134,16 @@ retries then use a short ladder: 2, 5, 15, 30, and 60 minutes. A successful run
 returns to the normal interval, so a reconnect is picked up within two minutes
 without hammering a long outage.
 
+## Startup at login
+
+The two Startup switches are the one GUI setting with no key in this file. They
+write or delete `$XDG_CONFIG_HOME/autostart/repopull.desktop` (usually
+`~/.config/autostart`), and that file is the state, so editing it in the
+desktop's own autostart panel changes what the switches show. The `Exec` line is
+the command repopull was running when the switch was set, so a hand-written key
+would only be a second copy to disagree with. See
+[gui.md](gui.md#settings) for the details and the quoting rules.
+
 ## Environment variables
 
 | Variable | Effect |

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import gc
 import json
@@ -30,6 +31,7 @@ if HAVE_PYSIDE:
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QMessageBox
 
+    from repopull import autostart
     from repopull.config import Config, load_config, save_config
     from repopull.diagnostics import LfsStatus
     from repopull.gui.jobs import RunTask
@@ -37,6 +39,8 @@ if HAVE_PYSIDE:
     from repopull.gui.settings import SETTINGS_SECTIONS
     from repopull.gui.switch import Switch
     from repopull.gui.theme import STATUS_COLORS
+    from repopull.gui.app import _repair_autostart
+    from repopull.gui.instance import ask_to_show
     from repopull.gui.window import DiscoveryTask, MainWindow
     from repopull.rootstate import RootStateCheck
     from repopull.models import Outcome, Report, Row
@@ -1438,6 +1442,184 @@ if HAVE_PYSIDE:
                     {"force": False, "mode": "status", "auto": True},
                 )
                 window.request_quit()
+
+        @contextlib.contextmanager
+        def _autostart(
+            self, entry: Path, program: str = "/opt/repopull/repopull-gui"
+        ) -> object:
+            target = autostart.Target((program,), "test")
+            with (
+                patch(
+                    "repopull.autostart.entry_path", return_value=entry
+                ),
+                patch(
+                    "repopull.autostart.resolve_target", return_value=target
+                ),
+            ):
+                yield entry
+
+        def test_startup_section_starts_switched_off(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                entry = base / "autostart" / "repopull.desktop"
+                with self._autostart(entry):
+                    window = MainWindow(self._config(base, self._tree(base)))
+
+                    self.assertTrue(window.settings_login.isEnabled())
+                    self.assertFalse(window.settings_login.isChecked())
+                    self.assertFalse(
+                        window.settings_login_hidden.isEnabled()
+                    )
+                    self.assertIn("Not in", window.settings_login_note.text())
+                    window.close()
+
+        def test_launch_at_login_writes_and_removes_the_entry(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                entry = base / "autostart" / "repopull.desktop"
+                with self._autostart(entry) as path:
+                    window = MainWindow(self._config(base, self._tree(base)))
+
+                    window.settings_login.setChecked(True)
+
+                    self.assertTrue(path.is_file())
+                    state = autostart.read(path)
+                    self.assertTrue(state.installed)
+                    self.assertFalse(state.hidden)
+                    self.assertEqual(state.argv, ("/opt/repopull/repopull-gui",))
+                    self.assertTrue(
+                        window.settings_login_hidden.isEnabled()
+                    )
+
+                    window.settings_login.setChecked(False)
+
+                    self.assertFalse(path.exists())
+                    window.close()
+
+        def test_hidden_switch_rewrites_the_entry(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                entry = base / "autostart" / "repopull.desktop"
+                with self._autostart(entry) as path:
+                    window = MainWindow(self._config(base, self._tree(base)))
+                    window.settings_login.setChecked(True)
+
+                    window.settings_login_hidden.setChecked(True)
+
+                    self.assertTrue(autostart.read(path).hidden)
+                    self.assertIn(
+                        "opens hidden", window.settings_login_note.text()
+                    )
+                    window.close()
+
+        def test_startup_switches_paint_what_the_entry_says(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                entry = base / "autostart" / "repopull.desktop"
+                with self._autostart(entry):
+                    autostart.install(
+                        entry,
+                        autostart.Target(("/opt/app",), "test"),
+                        hidden=True,
+                    )
+
+                    window = MainWindow(self._config(base, self._tree(base)))
+
+                    self.assertTrue(window.settings_login.isChecked())
+                    # The knob is animated from `toggled`, so a blocked signal
+                    # would leave it painted as off.
+                    self.assertEqual(window.settings_login._position, 1.0)
+                    self.assertEqual(
+                        window.settings_login_hidden._position, 1.0
+                    )
+                    window.close()
+
+        def test_a_moved_executable_is_not_offered(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                entry = base / "autostart" / "repopull.desktop"
+                with patch(
+                    "repopull.autostart.entry_path", return_value=entry
+                ), patch(
+                    "repopull.autostart.resolve_target", return_value=None
+                ):
+                    window = MainWindow(self._config(base, self._tree(base)))
+
+                    self.assertFalse(window.settings_login.isEnabled())
+                    self.assertFalse(
+                        window.settings_login_hidden.isEnabled()
+                    )
+                    self.assertIn(
+                        "stable command",
+                        window.settings_login_note.text(),
+                    )
+                    window.close()
+
+        def test_failed_entry_write_reverts_the_switch(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                entry = base / "autostart" / "repopull.desktop"
+                with self._autostart(entry):
+                    window = MainWindow(self._config(base, self._tree(base)))
+                    with patch(
+                        "repopull.autostart.install",
+                        side_effect=OSError("read-only home"),
+                    ):
+                        window.settings_login.setChecked(True)
+
+                    self.assertFalse(window.settings_login.isChecked())
+                    self.assertIn(
+                        "Could not update", window.status_message.text()
+                    )
+                    window.close()
+
+        def test_hidden_start_needs_a_tray(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                window = MainWindow(
+                    self._config(base, self._tree(base)), hidden=True
+                )
+
+                self.assertFalse(window.starts_hidden)
+
+                window._tray_available = True
+                self.assertTrue(window.starts_hidden)
+                window.close()
+
+        def test_a_second_launch_raises_the_window(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                config = self._config(base, self._tree(base))
+                window = MainWindow(config, hidden=True)
+                window._tray_available = True
+                window.start_instance_channel()
+                self.assertFalse(window.isVisible())
+
+                self.assertTrue(ask_to_show(config.log_dir))
+                for _ in range(100):
+                    self.app.processEvents()
+                    if window.isVisible():
+                        break
+                    QTest.qWait(10)
+
+                self.assertTrue(window.isVisible())
+                window.request_quit()
+
+        def test_startup_repairs_an_entry_left_at_an_old_path(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                entry = base / "autostart" / "repopull.desktop"
+                autostart.install(
+                    entry, autostart.Target(("/old/app",), "test"), hidden=True
+                )
+
+                with self._autostart(entry, "/new/app"):
+                    _repair_autostart()
+
+                self.assertEqual(
+                    autostart.read(entry).argv,
+                    ("/new/app", autostart.HIDDEN_FLAG),
+                )
 
         def test_close_to_tray_hides_instead_of_quitting(self) -> None:
             with tempfile.TemporaryDirectory() as tmp:

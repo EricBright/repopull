@@ -42,6 +42,7 @@ def _fake_appdir(base: Path) -> tuple[Path, Path, Path]:
         pyside / "QtNetwork.abi3.so",
         pyside / "QtCore.abi3.so.types",
         qt / "lib/QtCore.so.6",
+        qt / "lib/QtNetwork.so.6",
         qt / "lib/QtQml.so.6",
         qt / "lib/QtGui.so.6",
         qt / "lib/QtWidgets.so.6",
@@ -97,11 +98,15 @@ class TrimPolicyTests(unittest.TestCase):
         self.assertEqual(imported_qt_modules, set(trim.KEEP_BINDINGS))
 
     def test_binding_filter_keeps_only_imported_modules(self) -> None:
-        for name in ("QtCore.abi3.so", "QtGui.abi3.so", "QtWidgets.abi3.so"):
+        for name in (
+            "QtCore.abi3.so",
+            "QtGui.abi3.so",
+            "QtWidgets.abi3.so",
+            "QtNetwork.abi3.so",
+        ):
             self.assertTrue(trim.keeps_binding(name), name)
         for name in (
             "QtQml.abi3.so",
-            "QtNetwork.abi3.so",
             "QtOpenGL.abi3.so",
             "QtCore.so",
             "QtCore.abi3.so.6",
@@ -140,7 +145,6 @@ class TrimAppDirTests(unittest.TestCase):
             self.assertGreater(result.removed_entries, 20)
             for removed in (
                 pyside / "QtQml.abi3.so",
-                pyside / "QtNetwork.abi3.so",
                 qt / "qml",
                 qt / "metatypes",
                 qt / "libexec",
@@ -160,6 +164,7 @@ class TrimAppDirTests(unittest.TestCase):
                 pyside / "QtCore.abi3.so",
                 pyside / "QtGui.abi3.so",
                 pyside / "QtWidgets.abi3.so",
+                pyside / "QtNetwork.abi3.so",
                 qt / "plugins/platforms/libqxcb.so",
                 qt / "plugins/platforms/libqwayland.so",
                 qt / "translations/qtbase_en.qm",

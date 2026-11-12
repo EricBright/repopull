@@ -22,7 +22,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-KEEP_BINDINGS = frozenset({"QtCore", "QtGui", "QtWidgets"})
+KEEP_BINDINGS = frozenset({"QtCore", "QtGui", "QtWidgets", "QtNetwork"})
 """PySide6 Python modules imported by repopull; see tests/test_packaging.py."""
 
 KEEP_PLATFORM_PLUGINS = frozenset(
@@ -76,7 +76,7 @@ class TrimResult:
 
 
 def keeps_binding(filename: str) -> bool:
-    """True for the three PySide6 bindings repopull imports."""
+    """True for the PySide6 bindings repopull imports."""
     name = Path(filename).name
     if not name.endswith(".abi3.so"):
         return False

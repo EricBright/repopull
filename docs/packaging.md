@@ -43,7 +43,8 @@ cannot reach:
 - Python's Tk, IDLE, turtle demos, SQLite and the matching shared libraries;
 - Qt translations other than the `qtbase_*` and `qt_*` catalogues.
 
-It then keeps only the `QtCore`, `QtGui` and `QtWidgets` Python bindings and
+It then keeps only the `QtCore`, `QtGui`, `QtWidgets` and `QtNetwork` Python
+bindings and
 follows their ELF `NEEDED` entries (plus those of the retained plugins) to keep
 exactly the Qt shared libraries they load. If a retained file needs a Qt library
 that is missing, the build stops rather than producing an image that only starts

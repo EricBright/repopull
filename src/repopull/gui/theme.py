@@ -198,7 +198,7 @@ def stylesheet(palette: Palette = PALETTE) -> str:
         font-size: 12px;
     }}
     QPushButton#FaintLink:hover {{
-        color: {p.muted};
+        color: {p.accent};
     }}
     QPushButton#Nav {{
         text-align: left;

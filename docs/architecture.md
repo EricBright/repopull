@@ -18,6 +18,7 @@ between discovery, git access, decision-making, and presentation.
 | `mounts.py` | Probes the watched path's mount source, filesystem UUID, and device identity. |
 | `rootstate.py` | Persists and compares the watched root's filesystem identity and repository count. |
 | `uistate.py` | Remembers the last GUI page, filter, and detail selection. |
+| `autostart.py` | Reads and writes the XDG autostart entry: target discovery, Desktop Entry quoting, and stale-path repair. |
 | `diagnostics.py` | Human-readable path/root explanations and fix-it advice. |
 | `menu.py` | Interactive loop and selection parsing. |
 | `cli.py` | Argument parsing, dispatch, exit codes, the run lock. |
@@ -144,6 +145,9 @@ writing a separate JSON file.
   and the pure automatic-refresh decision table.
 - `tests/test_mounts.py`, `tests/test_rootstate.py`, `tests/test_uistate.py` —
   mount probing, root identity, and remembered GUI state.
+- `tests/test_autostart.py` — Desktop Entry quoting round-trips, `Hidden`/
+  `X-GNOME-Autostart-enabled` handling, target resolution, and stale-path
+  repair, all against temporary directories.
 - `tests/test_selection.py`, `tests/test_version.py` — menu parser and version
   consistency.
 - `tests/test_icons.py`, `tests/test_docs.py` — icon assets/window icon; README
@@ -169,6 +173,7 @@ audit records the totals.
 | `rows.py` | Repository row and status chip |
 | `lfs_help.py` | Read-only Git LFS install/enable dialog |
 | `jobs.py` | `RunTask(QRunnable)` holding the same lock; Qt signals |
+| `instance.py` | Local socket that lets a second launch raise the running window |
 | `settings.py` | Settings cards, title/hint rows, and section widgets |
 | `switch.py` | Animated immediate-effect switch painted on `QCheckBox` |
 | `theme.py` | Palette tokens and generated stylesheet |

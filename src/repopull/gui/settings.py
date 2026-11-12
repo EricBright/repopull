@@ -13,7 +13,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-SETTINGS_SECTIONS = ("Watching", "Refresh", "Network", "Updates", "Storage")
+SETTINGS_SECTIONS = (
+    "Watching",
+    "Refresh",
+    "Startup",
+    "Network",
+    "Updates",
+    "Storage",
+)
 
 
 class SettingsCard(QFrame):

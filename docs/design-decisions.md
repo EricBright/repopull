@@ -591,10 +591,10 @@ that loses the race leaves a complete, readable state behind. See
 That wheel is built for all Qt applications, so it carried QML, Quick, Designer,
 type stubs, the bundled pip, and Tk/SQLite from the Python base. The download was
 95 MB, about twice AppGlider's 47 MB, even though repopull imports only QtCore,
-QtGui and QtWidgets.
+QtGui, QtWidgets and QtNetwork.
 
 **Decision:** The build trims the staged AppDir before packing. It deletes a
-fixed list of known-unused trees, keeps the three imported bindings, and walks
+fixed list of known-unused trees, keeps the imported bindings, and walks
 the ELF `NEEDED` entries of the retained bindings and plugins to keep exactly the
 Qt shared libraries they load. A missing Qt dependency stops the build. Platform
 plugins for X11, Wayland, offscreen and minimal stay. The build refuses an image
@@ -711,5 +711,46 @@ out, which is a real limitation: the glob is the supported way to narrow a run,
 and the docs say so. The bash function is exercised in the suite by calling it
 with `COMP_WORDS` and `COMP_CWORD` set, so the tests check behaviour and not
 just the presence of strings.
+
+## 42. The autostart entry is the state, and a hidden window must be reachable
+
+**Context:** "Start after reboot" sounds like a boolean, but the desktop owns
+that choice: KDE, GNOME and Xfce all show and edit `~/.config/autostart`, and
+users disable entries there. A `start_at_login` key in `config.toml` would drift
+from the file the moment someone used the desktop's own panel, and repopull
+would then keep re-adding something the user removed. A systemd user unit is the
+other obvious mechanism, but it does not appear in that panel, starts before
+the graphical session's portals and tray are ready, and needs the session
+environment passed by hand.
+
+The awkward part is AppImages: `sys.argv[0]` inside one points at a mount that
+is unmounted by the next login, so writing it produces an entry that fails
+silently. And starting hidden creates a trap: a window that is not shown and a
+tray icon that a second launch cannot find leaves the app unreachable, which is
+worse than not starting at all.
+
+**Decision:** The `[Desktop Entry]` file under `$XDG_CONFIG_HOME/autostart` is
+the only record of the setting; the switches read it every time Settings is
+shown and write or delete it immediately. `Exec` is built from `$APPIMAGE`, the
+checkout's `bin/repopull-gui`, the installed `repopull-gui`, or
+`python -m repopull.gui`, in that order, and nothing under `$APPDIR` is ever
+used. If no stable command exists the switches are disabled with the reason
+rather than writing a broken entry. Quoting follows the Desktop Entry spec,
+including its two escaping passes, so a path with a space, `"`, `$`, backtick,
+`%`, or newline still works. On launch, an entry is rewritten only when the
+program it names has disappeared, so testing a checkout cannot silently repoint
+an entry that still launches a working AppImage. `--hidden` is honoured only
+when a tray icon is available, and the single-instance lock is complemented by a
+local socket: a second launch asks the running window to come forward and exits
+instead of showing an "already running" dialog.
+
+**Consequences:** The desktop's own autostart panel and repopull never disagree,
+and moving or upgrading the AppImage repairs itself on the next launch. A
+systemd user could still add a unit and repopull would neither know nor fight
+it. Because the entry stores the command that was running when it was written, a
+checkout entry points at that checkout; deleting the checkout leaves an entry
+that fails at login, which the desktop panel can remove. Hidden start still
+depends on the tray host existing at login; when it does not, the window is
+shown, and the limitation is documented rather than papered over.
 
 For the full documentation index, see [README.md](../README.md#documentation-index).

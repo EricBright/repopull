@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- **Launch at login** and **Open hidden in the tray** in Settings → Startup. The
+  switches write or delete `repopull.desktop` in your desktop's autostart
+  folder, and the file is the only record, so disabling it in the desktop's own
+  autostart settings shows up here as off. The entry points at the running
+  AppImage rather than its temporary mount, and is repaired when the recorded
+  program is gone.
+- The GUI takes `--hidden` to start in the tray without a window. Without a
+  tray icon it shows the window instead, because a windowless process with no
+  tray could not be reached.
+- A second launch now brings the running window forward and exits, instead of
+  refusing with an "already running" dialog. This is what makes a window hidden
+  in the tray reachable from the launcher.
+- The sidebar **Next check** line turns accent blue on hover. It was already a
+  shortcut to Settings → Refresh, but the hand cursor appeared over text that
+  looked inert.
 - Shell completions for bash and fish: `repopull completions bash` and
   `repopull completions fish` print a script to eval or install. Commands,
   global options, per-command options and paths complete; repository labels do
