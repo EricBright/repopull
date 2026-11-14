@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -288,6 +289,65 @@ class NetworkFailFastTests(unittest.TestCase):
                 [row.label for row in rows], ["alpha", "beta", "gamma"]
             )
             self.assertEqual(fetch.call_count, 2)
+
+    def test_a_vanished_root_skips_the_rest_without_fetching(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            watched = base / "watched"
+            watched.mkdir()
+            refs = [
+                RepoRef(watched / name, name)
+                for name in ("alpha", "beta", "gamma")
+            ]
+            states = [_state(ref=ref) for ref in refs]
+            ok = git.GitResult(
+                args=("git", "fetch"),
+                returncode=0,
+                stdout="",
+                stderr="",
+                timeout_s=30,
+            )
+
+            def fetch_once(*_args: object, **_kwargs: object) -> git.GitResult:
+                # The disk is unplugged while the first repository works.
+                shutil.rmtree(watched)
+                return ok
+
+            with (
+                patch("repopull.sync._collect", return_value=states),
+                patch(
+                    "repopull.sync.git.git_lfs_available", return_value=True
+                ),
+                patch("repopull.sync.git.fetch", side_effect=fetch_once) as (
+                    fetch
+                ),
+                patch(
+                    "repopull.sync.inspect_repo",
+                    side_effect=lambda ref, **_kwargs: _state(ref=ref),
+                ),
+            ):
+                rows, network_error = _run(
+                    refs,
+                    _config(base),
+                    force=False,
+                    preview=True,
+                    progress=None,
+                    on_row=None,
+                    cancel=None,
+                )
+
+            self.assertFalse(network_error)
+            self.assertEqual(
+                [row.label for row in rows], ["alpha", "beta", "gamma"]
+            )
+            self.assertIs(rows[0].outcome, Outcome.UP_TO_DATE)
+            self.assertEqual(
+                rows[1].detail, "not attempted: watched folder disappeared"
+            )
+            self.assertEqual(
+                rows[2].detail, "not attempted: watched folder disappeared"
+            )
+            self.assertEqual(fetch.call_count, 1)
 
 
 class SyncIntegrationTests(unittest.TestCase):

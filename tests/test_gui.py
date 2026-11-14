@@ -199,6 +199,66 @@ if HAVE_PYSIDE:
                 self.assertTrue(window.retry_button.isHidden())
                 window.close()
 
+        def test_discovery_removes_an_abandoned_clone_folder(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = self._tree(base)
+                abandoned = root / ".repopull-clone-old"
+                (abandoned / "partial").mkdir(parents=True)
+                old = time.time() - 2 * 24 * 60 * 60
+                os.utime(abandoned, (old, old))
+                task = DiscoveryTask(root, 2, (), log_dir=None)
+                found: list[object] = []
+                task.signals.finished.connect(found.append)
+
+                task.run()
+
+                self.assertFalse(abandoned.exists())
+                self.assertEqual(len(found[0]), 3)
+
+        def test_a_run_with_a_missing_root_starts_the_wait(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = self._tree(base)
+                window = MainWindow(self._config(base, root))
+                self.assertFalse(window.root_wait_timer.isActive())
+
+                shutil.rmtree(root)  # the disk is unplugged mid-session
+                window._on_finished(
+                    Report(
+                        mode="status",
+                        started_at=datetime(2026, 11, 12, 18, 44, 0),
+                        elapsed_s=0.2,
+                        rows=(
+                            Row(
+                                "alpha",
+                                "main",
+                                Outcome.SKIPPED,
+                                0,
+                                "not attempted: watched folder disappeared",
+                            ),
+                        ),
+                    )
+                )
+
+                self.assertTrue(window.root_wait_timer.isActive())
+                self.assertIn(
+                    "watched folder is missing", window.status_message.text()
+                )
+                window.close()
+
+        def test_resume_arms_the_wait_for_a_missing_root(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = self._tree(base)
+                window = MainWindow(self._config(base, root))
+
+                shutil.rmtree(root)
+                window._on_resume(600.0)
+
+                self.assertTrue(window.root_wait_timer.isActive())
+                window.close()
+
         def test_root_state_mismatch_offers_and_performs_repair(self) -> None:
             with tempfile.TemporaryDirectory() as tmp:
                 base = Path(tmp)

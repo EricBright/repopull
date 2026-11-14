@@ -819,4 +819,43 @@ wrong path from being probed for the life of the session. The probe costs one
 adds no dependency. The limitation — up to 5 s of latency after the mount, and
 no reaction to a disk that arrives after the window — is documented.
 
+## 45. Survive a missing disk; never repair git for the user
+
+**Context:** This machine loses power for a fraction of a second now and then,
+which is indistinguishable from pulling the cord, and its external disk is a USB
+enclosure that a driver hiccup can drop without anything crashing. The first
+half of that was already safe by construction: `config.toml`, `root-state.json`,
+`latest.json`, and the UI state are written through a temp file and a rename, so
+a cut leaves the old file or the new one, never half of either. Two things were
+not safe. The autostart entry was renamed without an fsync, so a cut could leave
+an empty `.desktop` that starts nothing at the next login, silently. And a disk
+that vanished *while the window was running* produced forty separate fetch
+errors, one per repository, with nothing looking at the folder again until the
+next scheduled check.
+
+**Decision:** The sweep checks the watched folder itself once per repository and
+stops the moment a folder that was there at the start is gone, marking what it
+did not attempt `not attempted: watched folder disappeared`. The window treats
+that, a resume from suspend, and any failed run as reasons to arm the same
+10-minute probe as a late mount, so the library recovers by itself when the
+disk comes back. The autostart write now fsyncs before its rename. A
+`.repopull-clone-*` folder older than a day is deleted during discovery, because
+`clone` already removes its own temp folder on every path it controls and only a
+killed process can leave one.
+
+Git's leftovers are a different matter. A power cut can leave `.git/*.lock`, or
+a fast-forward applied to the index with the worktree partly written. Deleting a
+lock that another process holds, or resetting a worktree that a user may have
+edited, is how a pull-only tool loses somebody's work. So repopull names the
+lock file in the error, says what leaves one behind, and changes nothing.
+
+**Consequences:** A yanked cable costs one skipped report and at most five
+seconds of probing after the disk returns, instead of a red wall followed by
+hours of silence. A lock or a dirty tree still needs a human, which is the
+correct outcome: the tool reports precisely enough that the human knows what to
+do. The give-up after ten minutes is deliberate, so a folder that is genuinely
+gone stays on screen instead of being polled forever. The fsync costs one disk
+flush when a startup switch is toggled, and the clone sweep costs one directory
+scan per discovery. Nothing here touches the watched repositories.
+
 For the full documentation index, see [README.md](../README.md#documentation-index).

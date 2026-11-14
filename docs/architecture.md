@@ -9,7 +9,7 @@ between discovery, git access, decision-making, and presentation.
 |---|---|
 | `models.py` | Frozen dataclasses: `RepoRef`, `RepoState`, `Row`, `Report`, `Outcome`. |
 | `config.py` | TOML loading, validation, defaults, path resolution, and per-repository bulk-action holds. |
-| `discovery.py` | Finds `.git` directories at depth 1–2, applies ignore globs, skips clone work-in-progress. |
+| `discovery.py` | Finds `.git` directories at depth 1–2, applies ignore globs, skips clone work-in-progress, and sweeps temp folders an interrupted clone left behind. |
 | `git.py` | Typed wrappers around the git CLI; the only place that spawns processes. Captures output whole, or streams stderr to a callback when a command reports progress. |
 | `clone.py` | Validates a clone address and folder name, clones into a temporary folder, reports git's phase progress, then renames it into place. |
 | `sync.py` | Inspection, fetching, classification, and applying updates. |

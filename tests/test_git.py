@@ -19,6 +19,7 @@ from repopull.git import (
     _git_env,
     _terminate_process_group,
     is_network_error,
+    lock_advice,
     run_git,
 )
 
@@ -82,6 +83,37 @@ class NetworkClassificationTests(unittest.TestCase):
 
         self.assertNotIn("ghp_token", summary)
         self.assertIn("https://***@example/repo", summary)
+
+    def test_a_stale_index_lock_is_explained(self) -> None:
+        result = _result(
+            stderr=(
+                "fatal: Unable to create '/w/repo/.git/index.lock': "
+                "File exists."
+            )
+        )
+
+        summary = result.summary()
+
+        self.assertIn("Unable to create", summary)
+        self.assertIn("/w/repo/.git/index.lock", summary)
+        self.assertIn("remove it if no git is running", summary)
+
+    def test_a_held_repository_lock_is_explained(self) -> None:
+        result = _result(
+            stderr=(
+                "fatal: Unable to create '/w/repo/.git/shallow.lock': "
+                "File exists"
+            )
+        )
+
+        self.assertIsNotNone(lock_advice(result.stderr))
+        self.assertIn("remove it if no git is running", result.summary())
+
+    def test_other_failures_get_no_lock_advice(self) -> None:
+        result = _result(stderr="fatal: not a git repository")
+
+        self.assertIsNone(lock_advice(result.stderr))
+        self.assertNotIn("lock", result.summary())
 
 
 class EnvironmentTests(unittest.TestCase):

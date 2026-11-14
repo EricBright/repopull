@@ -72,7 +72,9 @@ restored; a detail page is restored only if that repository is still present.
   The status bar tracks git's phases (`Receiving objects 42% (1,234/5,678)`) on
   one 0–100 scale, so it never jumps back when git moves to the next phase.
   Existing folders are never overwritten. Private remotes need an SSH agent or
-  a credential helper because repopull never prompts.
+  a credential helper because repopull never prompts. A clone that a crash or a
+  power cut killed leaves a `.repopull-clone-*` folder behind; the next scan
+  removes one that is a day old, since no clone runs that long.
 - **Banner**: "N repositories can be updated" with a **Sync these** button.
   When some behind repositories are held out of Sync all, the banner reads
   "N can be updated · M held" and the button updates only the N.
@@ -108,6 +110,16 @@ missing folder.
 
 Giving up is deliberate: a path that never appears, or a folder that exists but
 holds no repositories, is a real problem and stays on screen until you fix it.
+
+The same wait covers a disk that disappears while the window is running, which
+a loose USB plug or a driver hiccup can do without any process noticing. A
+sweep that finds the watched folder gone stops at once instead of reporting
+every repository as broken: the rest are marked
+`not attempted: watched folder disappeared`, the status bar says the folder is
+missing, and the probe runs until it comes back. A resume after suspend checks
+the folder too, because a disk can go away while the machine is asleep. Until
+the disk returns, that sweep's report replaces the previous one, so the rows
+say what actually happened instead of repeating a stale "Up to date".
 
 ### Bulk-action holds
 

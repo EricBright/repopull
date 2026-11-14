@@ -23,6 +23,7 @@ RowCallback = Callable[[Row], None]
 
 _CANCELLED = "cancelled"
 _NETWORK_FAILURE_LIMIT = 2
+_ROOT_GONE = "not attempted: watched folder disappeared"
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,6 +171,19 @@ def _within_root(path: Path, root: Path) -> bool:
     return resolved == root_resolved or root_resolved in resolved.parents
 
 
+def _root_gone(config: Config) -> bool:
+    """True when the watched folder is not there any more.
+
+    A removable disk can vanish mid-sweep. Every repository then fails on its
+    own, which would report forty disk errors for one unplugged cable, so the
+    sweep checks the folder itself instead of trusting one repository's
+    failure. This is not a network condition: a single look at the filesystem
+    settles it, and the GUI starts waiting for the folder to come back.
+    """
+    root = config.root
+    return root is not None and not root.exists()
+
+
 def _apply(
     state: RepoState,
     verdict: Verdict,
@@ -236,8 +250,13 @@ def _run(
     first) is what lets a caller show progress repository by repository. The
     second consecutive network-level failure stops the sweep: a single bad
     remote is reported but does not starve the rest. Remaining repositories are
-    marked not attempted instead of each paying its own timeout.
+    marked not attempted instead of each paying its own timeout. A watched
+    folder that has disappeared stops the sweep at once, because every
+    remaining repository would fail for the same reason.
     """
+    # Only a folder that was there when the sweep started counts as vanished;
+    # callers reject a root that is already missing before they get here.
+    root_present = not _root_gone(config)
     states = _collect(refs, config)
     lfs_ok = git.git_lfs_available()
     rows: list[Row] = []
@@ -250,6 +269,14 @@ def _run(
             break
         if progress is not None:
             progress(index, total, state.ref.label)
+
+        if root_present and _root_gone(config):
+            for remaining in states[index - 1 :]:
+                row = _row(remaining, Verdict(Outcome.SKIPPED, _ROOT_GONE))
+                rows.append(row)
+                if on_row is not None:
+                    on_row(row)
+            break
 
         current = state
         if state.error is not None:

@@ -71,7 +71,11 @@ from repopull.config import (
     save_config,
     save_repo_holds,
 )
-from repopull.discovery import DiscoveryError, discover_repos
+from repopull.discovery import (
+    DiscoveryError,
+    discover_repos,
+    sweep_stale_clones,
+)
 from repopull.diagnostics import LfsStatus, lfs_status
 from repopull.gui.clone_dialog import CloneDialog
 from repopull.gui.instance import Channel
@@ -167,6 +171,11 @@ class DiscoveryTask(QRunnable):
 
     def run(self) -> None:
         try:
+            for abandoned in sweep_stale_clones(self.root):
+                print(
+                    f"repopull-gui: removed abandoned clone {abandoned}",
+                    file=sys.stderr,
+                )
             refs = discover_repos(
                 self.root,
                 max_depth=self.max_depth,
@@ -1615,9 +1624,14 @@ class MainWindow(QMainWindow):
             self._root_wait_deadline = time.monotonic() + ROOT_WAIT_WINDOW_S
         if not self._root_wait_logged:
             self._root_wait_logged = True
+            detail = (
+                f" ({self.discovery_error})"
+                if self.discovery_error is not None
+                else ""
+            )
             print(
                 "repopull-gui: watched root missing, waiting for it to "
-                f"appear: {self.config.root} ({self.discovery_error})",
+                f"appear: {self.config.root}{detail}",
                 file=sys.stderr,
             )
         self.root_wait_timer.start(int(ROOT_WAIT_INTERVAL_S * 1000))
@@ -2869,6 +2883,9 @@ class MainWindow(QMainWindow):
 
     def _on_resume(self, gap_s: float) -> None:
         """Defer one status check until the desktop has settled."""
+        # A disk can go away while the machine is suspended; arm the wait
+        # before deciding whether to run at all.
+        self._settle_root_wait()
         if not self._auto_visible_allowed():
             self._resume_pending = False
             self.auto_timer.stop()
@@ -3102,11 +3119,14 @@ class MainWindow(QMainWindow):
             self.rows_by_label[row.label] = row
         self.task = None
         self._set_busy(False)
+        self._settle_root_wait()
         self._render_library()
         self._update_status_block()
         message = self._summary(report)
         if report.network_error:
             message += " · network unavailable"
+        if self._root_wait_deadline is not None:
+            message += " · watched folder is missing; waiting for it"
         self._flash(message)
         self._update_tray_tooltip()
         self._refresh_lfs_status()
@@ -3124,6 +3144,7 @@ class MainWindow(QMainWindow):
                 self.rows_by_label[row.label] = row
         self.task = None
         self._set_busy(False)
+        self._settle_root_wait()
         self._render_library()
         self._update_status_block()
         self._flash("Cancelled")
@@ -3138,6 +3159,7 @@ class MainWindow(QMainWindow):
         self._network_offline = False
         self.task = None
         self._set_busy(False)
+        self._settle_root_wait()
         self._flash("Run failed")
         if auto:
             self._auto_failures = min(self._auto_failures + 1, 10)

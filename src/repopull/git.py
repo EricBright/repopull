@@ -49,6 +49,11 @@ _CREDENTIALS = re.compile(
     r"([a-zA-Z][a-zA-Z0-9+.-]*://)([^/@\s]+)@"
 )
 
+_LOCK_FILE = re.compile(
+    r"Unable to create '(?P<path>[^']+\.lock)': File exists"
+)
+_LOCK_PROCESS = re.compile(r"Another git process seems to be running")
+
 _SCRUBBED_ENV = frozenset(
     {
         "GIT_DIR",
@@ -123,7 +128,31 @@ class GitResult:
         if not text:
             return f"git exited {self.returncode}"
         line = text.splitlines()[-1].strip()
+        advice = lock_advice(text)
+        if advice is not None:
+            line = f"{line} · {advice}"
         return line[:limit]
+
+
+def lock_advice(text: str) -> str | None:
+    """Explain a lock file left behind by an interrupted process.
+
+    A power loss or a killed run can leave `.git/*.lock` in place, and every
+    later run then fails on it. The lock is not repopull's to delete — another
+    process may hold it — so the only honest thing to do is name it.
+    """
+    match = _LOCK_FILE.search(text)
+    if match is not None:
+        return (
+            f"stale lock {match.group('path')}; an interrupted run leaves "
+            "one behind, remove it if no git is running"
+        )
+    if _LOCK_PROCESS.search(text):
+        return (
+            "a lock file remains from an interrupted run; remove the "
+            "repository's .git/*.lock if no git is running"
+        )
+    return None
 
 
 def _redact(text: str) -> str:

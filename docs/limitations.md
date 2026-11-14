@@ -42,6 +42,11 @@
 - Starting hidden (`--hidden`) needs a tray host. Without one repopull shows the
   window instead, and a hidden window whose tray host appears later is not
   resurrected in that session.
+- After a power cut, git can leave `.git/*.lock` files or a half-applied
+  fast-forward behind. repopull names the lock file in the error and never
+  deletes it: removing another process's lock, or resetting a worktree, is how
+  a tool destroys work. A repository left dirty by an interrupted update keeps
+  reporting as skipped until you look at it with `git status`.
 - A watched folder on a removable disk can be missing when the window starts at
   login. repopull then probes the path every 5 s for up to 10 minutes and scans
   as soon as it appears, but a disk that mounts later than that stays
