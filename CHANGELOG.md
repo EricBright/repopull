@@ -1,7 +1,16 @@
 # Changelog
 
-## Unreleased
+## 0.8.1 — 2026-11-13
 
+- A disk that disappears while a sweep is running now stops it: the remaining
+  repositories are `not attempted: watched folder disappeared` instead of one
+  fetch error each, and the window starts probing the folder at once. That
+  covers a yanked USB cable or a driver hiccup, not only a slow mount at login.
+  The probe also starts after a resume from suspend and after any failed run.
+- A failed git command that hit a stale `.git/*.lock` now says so, and names the
+  file: a power cut leaves one behind and every later run fails on it. repopull
+  reports the lock and refuses to delete it, because another process may hold
+  it.
 - A watched folder on a removable disk can be missing when the window starts at
   login, because the autostart entry and the mount race each other. The library
   used to show the error and then wait a whole refresh interval before looking
@@ -14,6 +23,13 @@
   reason, which systemd keeps in the journal for
   `app-repopull@autostart.service`; giving up writes another. Before, the
   message existed only as a toast and nothing recorded what it said.
+- The autostart entry is fsynced before it is renamed into place, so a power cut
+  can no longer leave an empty `.desktop` that starts nothing at the next login.
+- A `.repopull-clone-*` folder left by a clone killed mid-way is removed by the
+  next scan once it is a day old. Discovery skipped these folders but nothing
+  deleted them, so a partial clone could sit in the watched root for good.
+- The "root is not writable" message names a read-only mount, which is what an
+  unclean shutdown leaves behind, instead of suggesting permissions only.
 
 ## 0.8.0 — 2026-11-12
 

@@ -38,13 +38,25 @@ Action 5 adds CI guardrails. `make test` runs under `-X dev -X faulthandler
 update and pin policy is in [packaging.md](packaging.md#updates-and-dependency-checks).
 The Rust decision remains gated and no Rust is built.
 
-## Current state and next session (2026-11-12)
+## Current state and next session (2026-11-13)
 
 - **Release:** 0.8.0, tag `v0.8.0`;
   <https://github.com/EricBright/repopull/releases/tag/v0.8.0>. The tree adds
   bash/fish completions, launch at login with a hidden tray start, the release
   check, and the zsync update metadata (349 → 414 tests). 0.7.0 stays at tag
   `v0.7.0`, `62d6908`.
+- **Release 0.8.1:** tag `v0.8.1`,
+  <https://github.com/EricBright/repopull/releases/tag/v0.8.1>. Adds the mount
+  guard and the power-loss hardening. 427 tests, 1 expected failure, mypy
+  strict clean, `make audit` clean, README 1,999 words.
+- **AppImage 0.8.1:** `dist/repopull-0.8.1-x86_64.AppImage`, 46,238,200 bytes,
+  SHA-256 `8202e540...f346ebd`, with
+  `repopull-0.8.1-x86_64.AppImage.zsync` (158,341 bytes,
+  `966cb1d7...39253ec1`). Offscreen smoke test 41 rows on the real watched root
+  and 45 on the build's fixture, `--cli version` reports 0.8.1, `.upd_info`
+  carries the `gh-releases-zsync` string, the build's `check_zsync` matched the
+  image's SHA-1 (re-checked by hand), and the extracted `site-packages/repopull`
+  contains the sweep, the wait and the lock advice, so the image is not stale.
 - **AppImage:** `dist/repopull-0.8.0-x86_64.AppImage`, 46,230,008 bytes,
   SHA-256 `0fac3b9b...c2550fc5a8`, with
   `repopull-0.8.0-x86_64.AppImage.zsync` (158,313 bytes,
@@ -122,11 +134,35 @@ The Rust decision remains gated and no Rust is built.
   overwritten 1 MB region downloads 1,001,472 bytes, and an 8 KB insertion
   (which shifts everything after it) downloads 2048 bytes. 14 update tests, 5
   CLI tests, 6 GUI tests.
-- **Next:** nothing is in flight. 0.8.0 is the first build that carries
-  `.upd_info` and a `.zsync`, so Gear Lever and AppImageUpdate can now update an
-  installed copy. Known follow-ups: native zsh completion, a `--hidden` start
-  that waits for a late tray host, signature-key setup before any
-  self-replacement, and the accepted gaps in [limitations.md](limitations.md).
+- **Mount guard (2026-11-13):** a scan that finds the watched path
+  missing probes it every 5 s for 10 minutes instead of waiting a refresh
+  interval, so a login where the disk mounts a second late costs seconds. The
+  first failure and the give-up each write one line to stderr, which lands in
+  the journal, and **Try again** rescans on demand. 4 GUI tests, and
+  `test_empty_root_mismatch_shows_removal_guidance` no longer hard-codes a
+  filesystem UUID, which is what made the v0.8.0 CI run red on 3.13 only.
+- **Power-loss and unplug review (2026-11-13):** the state files
+  were already atomic (temp file, fsync, rename), so a cut leaves the old or the
+  new file; the autostart entry now fsyncs too, because it was the one file a
+  cut could empty. A sweep checks the watched folder once per repository and
+  stops when a folder that was there at the start is gone, marking the rest
+  `not attempted: watched folder disappeared`; the window then uses the same
+  10-minute probe, including after a resume. A `.repopull-clone-*` folder older
+  than a day is swept during discovery. 9 tests cover the sweep, the wait, the
+  clone sweep and the lock advice. A failure on a stale `.git/*.lock` names
+  the lock instead of passing git's line through. Deliberately not automated:
+  deleting a lock another process may hold, resetting a worktree an interrupted
+  fast-forward left dirty, and repairing a filesystem. Decision 45 records why.
+  Known gaps left: a remounted disk that lands on a different path is not
+  re-found by filesystem UUID, and a dirty tree from an interrupted update needs
+  a human.
+- **Next:** nothing is in flight. 0.8.1 carries the mount guard and the
+  power-loss hardening on top of the `.upd_info` and `.zsync` that 0.8.0
+  introduced, so Gear Lever and AppImageUpdate can update an installed copy.
+  Known follow-ups: native zsh completion, a `--hidden` start that waits for a
+  late tray host, signature-key setup before any self-replacement, re-finding a
+  remounted disk by filesystem UUID, and the accepted gaps in
+  [limitations.md](limitations.md).
 - **Resume with:** `make check`, `make audit`, then `make appimage` if the
   image needs rebuilding.
 

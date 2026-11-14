@@ -1,6 +1,6 @@
 # Packaging as an AppImage
 
-`make appimage` builds `dist/repopull-0.8.0-x86_64.AppImage`: a single file with
+`make appimage` builds `dist/repopull-0.8.1-x86_64.AppImage`: a single file with
 a bundled Python 3.13, PySide6 and `repopull`. It follows the same approach as
 AppGlider — `python-appimage` stages the AppDir, then a pinned `appimagetool`
 packs it. The staged AppDir is trimmed to the Qt modules repopull imports, so
@@ -28,7 +28,7 @@ notices, packs the image, and runs two smoke tests (GUI offscreen and
 `--cli version`). Output:
 
 ```
-dist/repopull-0.8.0-x86_64.AppImage
+dist/repopull-0.8.1-x86_64.AppImage
 dist/SHA256SUMS.txt
 ```
 
@@ -80,9 +80,9 @@ code.
 ## Run
 
 ```bash
-./dist/repopull-0.8.0-x86_64.AppImage                  # GUI
-./dist/repopull-0.8.0-x86_64.AppImage --cli status
-./dist/repopull-0.8.0-x86_64.AppImage --cli sync --only 'craft-*'
+./dist/repopull-0.8.1-x86_64.AppImage                  # GUI
+./dist/repopull-0.8.1-x86_64.AppImage --cli status
+./dist/repopull-0.8.1-x86_64.AppImage --cli sync --only 'craft-*'
 ```
 
 If FUSE is unavailable, add `--appimage-extract-and-run`.

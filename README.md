@@ -15,14 +15,14 @@ packages; the optional GUI needs PySide6, and the AppImage (x86_64) bundles both
 
 ## Status
 
-**Current release: 0.8.0.** Tests and mypy pass. The 0.8.0 AppImage is 46 MB and
-adds shell completions, launch at login and a release check. The historical
+**Current release: 0.8.1.** Tests and mypy pass. The 0.8.1 AppImage is 46 MB and
+recovers by itself when a watched disk is late or unplugged. The historical
 [test audit](docs/test-falsifiability.md) covers 0.2.3; a 2026-11-07 re-audit
 covers the 0.4.13 tree at 224 tests; 0.4.14–0.4.16 added 25, 0.5.0 added 15 for
 per-repository holds, row labels, Open folder, and Next check (264 at that
 release), and 0.5.1 adds 2 scroll-position tests (266 at that release). 0.5.2
 adds the soak harness and hardening tests (284 at that release); 0.6.0 adds 32;
-0.7.0 adds 11; 0.8.0 adds 84 (414 now).
+0.7.0 adds 11; 0.8.0 adds 84; 0.8.1 adds 13 (427 now).
 
 ## The problem the app tries to address
 
@@ -150,14 +150,14 @@ importable, otherwise it lets `uv` provide it for that run.
 
 ```bash
 make appimage
-./dist/repopull-0.8.0-x86_64.AppImage
+./dist/repopull-0.8.1-x86_64.AppImage
 ```
 
 The image bundles Python 3.13, PySide6 and repopull. Run the CLI from it with
 `--cli`:
 
 ```bash
-./dist/repopull-0.8.0-x86_64.AppImage --cli status
+./dist/repopull-0.8.1-x86_64.AppImage --cli status
 ```
 
 It keeps `config.toml` and logs in `~/.config/repopull` (or `$REPOPULL_HOME`).
@@ -264,7 +264,7 @@ make audit       # check packaging pins against known advisories
 make soak        # CLI resource soak against throwaway local repos
 make soak-qt     # Qt window create/close soak
 make gui         # launch the optional PySide6 interface
-make appimage    # build dist/repopull-0.8.0-x86_64.AppImage
+make appimage    # build dist/repopull-0.8.1-x86_64.AppImage
 make bump        # increment the patch version
 make release     # check, bump the patch, build the AppImage
 ```
