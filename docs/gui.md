@@ -94,6 +94,21 @@ restored; a detail page is restored only if that repository is still present.
   ignores the holds because it targets the repository directly.
 - **Force sync…** on the detail page resets one repository after a confirmation.
 
+### When the watched folder is not there yet
+
+At login the window can start before a removable disk is mounted, so the first
+scan may find the watched folder missing. That is expected, not a reason to
+forget the folder: while the path does not exist the library says so and
+repopull probes it every 5 s for up to 10 minutes, then scans as soon as it
+appears. The message shows the wait, the reason is written to stderr (the
+journal, under `app-repopull@autostart.service`), and the wait stops on the
+first successful scan. **Try again** runs the scan immediately instead of
+waiting for the next probe; it is offered for any failed scan, not only a
+missing folder.
+
+Giving up is deliberate: a path that never appears, or a folder that exists but
+holds no repositories, is a real problem and stays on screen until you fix it.
+
 ### Bulk-action holds
 
 The two switches on a repository's page are stored immediately in `config.toml`

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import random
+import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -120,6 +121,13 @@ from repopull.sync import (
 )
 
 
+ROOT_WAIT_INTERVAL_S = 5.0
+"""How often a missing watched root is probed while waiting for a mount."""
+
+ROOT_WAIT_WINDOW_S = 600.0
+"""How long a missing watched root is waited for before giving up."""
+
+
 def _boottime() -> float | None:
     """Seconds since boot including suspend, when the platform exposes it."""
     clock = getattr(time, "CLOCK_BOOTTIME", None)
@@ -232,6 +240,9 @@ class MainWindow(QMainWindow):
         self.row_widgets: dict[str, RepoRow] = {}
         self.refs: list[RepoRef] = []
         self.discovery_error: str | None = None
+        self._scanning = discover_async
+        self._root_wait_deadline: float | None = None
+        self._root_wait_logged = False
         self.root_state_check: RootStateCheck | None = None
         self.filter = (
             self._ui_state.filter
@@ -256,6 +267,9 @@ class MainWindow(QMainWindow):
         self.auto_timer = QTimer(self)
         self.auto_timer.setSingleShot(True)
         self.auto_timer.timeout.connect(self._auto_refresh_due)
+        self.root_wait_timer = QTimer(self)
+        self.root_wait_timer.setSingleShot(True)
+        self.root_wait_timer.timeout.connect(self._root_wait_due)
         boottime = _boottime()
         self._suspend_detector: SuspendDetector | None = (
             SuspendDetector(max(0.0, boottime - time.monotonic()))
@@ -512,6 +526,13 @@ class MainWindow(QMainWindow):
         self.empty_label.hide()
         layout.addWidget(self.empty_label)
 
+        self.retry_button = QPushButton("Try again")
+        self.retry_button.setToolTip(
+            "Scan the watched folder again, for example after mounting "
+            "the disk"
+        )
+        self.retry_button.clicked.connect(self._retry_discovery)
+        self.retry_button.hide()
         self.repair_button = QPushButton("Repair saved root state…")
         self.repair_button.setObjectName("Primary")
         self.repair_button.setToolTip(
@@ -520,9 +541,12 @@ class MainWindow(QMainWindow):
         )
         self.repair_button.clicked.connect(self._repair_root_state)
         self.repair_button.hide()
-        layout.addWidget(
-            self.repair_button, 0, Qt.AlignmentFlag.AlignHCenter
-        )
+        actions = QHBoxLayout()
+        actions.addStretch(1)
+        actions.addWidget(self.retry_button)
+        actions.addWidget(self.repair_button)
+        actions.addStretch(1)
+        layout.addLayout(actions)
 
         return page
 
@@ -1436,6 +1460,7 @@ class MainWindow(QMainWindow):
         self.root_state_check = None
         root = self.config.root
         if root is None:
+            self._scanning = False
             self.refs = []
             self._discovery_callback = None
             self.discovery_error = (
@@ -1446,6 +1471,7 @@ class MainWindow(QMainWindow):
             self._schedule_auto_refresh()
             return
 
+        self._scanning = True
         self.refs = []
         self.discovery_error = "Scanning the watched folder…"
         self._render_library()
@@ -1475,6 +1501,7 @@ class MainWindow(QMainWindow):
         if generation != self._discovery_generation or self._quit_requested:
             return
         self._discovery_task = None
+        self._scanning = False
         found = [ref for ref in refs if isinstance(ref, RepoRef)]
         self.refs = found
         if not isinstance(check, RootStateCheck):
@@ -1488,6 +1515,7 @@ class MainWindow(QMainWindow):
                 self.discovery_error = self._root_state_message(check)
             else:
                 self.discovery_error = None
+        self._settle_root_wait()
         self._render_library()
         self._update_status_block()
         self._schedule_auto_refresh()
@@ -1501,10 +1529,12 @@ class MainWindow(QMainWindow):
         if generation != self._discovery_generation or self._quit_requested:
             return
         self._discovery_task = None
+        self._scanning = False
         self._discovery_callback = None
         self.refs = []
         self.root_state_check = None
         self.discovery_error = message
+        self._settle_root_wait()
         self._render_library()
         self._update_status_block()
         self._schedule_auto_refresh()
@@ -1528,6 +1558,7 @@ class MainWindow(QMainWindow):
         )
 
     def _reload_refs(self) -> None:
+        self._scanning = False
         root = self.config.root
         if root is None:
             self.refs = []
@@ -1546,6 +1577,7 @@ class MainWindow(QMainWindow):
             self.refs = []
             self.root_state_check = None
             self.discovery_error = str(exc)
+            self._settle_root_wait()
             return
         check = check_root_state(
             self.config.log_dir, root, len(self.refs)
@@ -1554,8 +1586,89 @@ class MainWindow(QMainWindow):
         if check.problem is not None:
             self.refs = []
             self.discovery_error = self._root_state_message(check)
+            self._settle_root_wait()
             return
         self.discovery_error = None
+        self._settle_root_wait()
+
+    # ------------------------------------------------- wait for a mount
+
+    def _root_is_missing(self) -> bool:
+        root = self.config.root
+        return root is not None and not root.exists()
+
+    def _settle_root_wait(self) -> None:
+        """Keep watching for a missing root, or stop once it is back."""
+        if self._root_is_missing():
+            self._arm_root_wait()
+        else:
+            self._stop_root_wait()
+
+    def _arm_root_wait(self) -> None:
+        """Probe a missing root instead of leaving the window dead for hours.
+
+        The watched folder can live on a removable disk that is still being
+        mounted when the window starts, which is the normal case right after
+        login. One failed scan must not mean waiting a whole refresh interval.
+        """
+        if self._root_wait_deadline is None:
+            self._root_wait_deadline = time.monotonic() + ROOT_WAIT_WINDOW_S
+        if not self._root_wait_logged:
+            self._root_wait_logged = True
+            print(
+                "repopull-gui: watched root missing, waiting for it to "
+                f"appear: {self.config.root} ({self.discovery_error})",
+                file=sys.stderr,
+            )
+        self.root_wait_timer.start(int(ROOT_WAIT_INTERVAL_S * 1000))
+
+    def _stop_root_wait(self) -> bool:
+        """Stop probing; True when a wait was actually running."""
+        was_waiting = self._root_wait_deadline is not None
+        self.root_wait_timer.stop()
+        self._root_wait_deadline = None
+        self._root_wait_logged = False
+        return was_waiting
+
+    def _root_wait_due(self) -> None:
+        if self._quit_requested or self._root_wait_deadline is None:
+            return
+        if not self._root_is_missing():
+            self._stop_root_wait()
+            if self._scanning:
+                return
+            self._flash("Watched folder found; scanning it now.")
+            self._start_discovery()
+            return
+        if time.monotonic() >= self._root_wait_deadline:
+            self._stop_root_wait()
+            print(
+                "repopull-gui: gave up waiting for the watched root: "
+                f"{self.config.root}",
+                file=sys.stderr,
+            )
+            self._flash(
+                "Gave up waiting for the watched folder; it is still missing."
+            )
+            self._render_library()
+            return
+        self.root_wait_timer.start(int(ROOT_WAIT_INTERVAL_S * 1000))
+
+    def _empty_message(self) -> str:
+        """The empty-library message, plus what waiting is doing about it."""
+        message = self.discovery_error or "Scanning the watched folder…"
+        if self._root_wait_deadline is None:
+            return message
+        return (
+            message
+            + "\n\nWaiting for the folder to appear; checking again every "
+            f"{ROOT_WAIT_INTERVAL_S:.0f} s."
+        )
+
+    def _retry_discovery(self) -> None:
+        """Scan again after a failure the user has hopefully fixed."""
+        self._stop_root_wait()
+        self._start_discovery()
 
     def _repair_root_state(self) -> None:
         """Accept the current identity after the user confirms it."""
@@ -1680,9 +1793,10 @@ class MainWindow(QMainWindow):
         if visible:
             self.empty_label.hide()
             self.repair_button.hide()
+            self.retry_button.hide()
         else:
             if self.discovery_error is not None:
-                self.empty_label.setText(self.discovery_error)
+                self.empty_label.setText(self._empty_message())
             elif self.search:
                 self.empty_label.setText("No repositories match the search.")
             elif not self.refs:
@@ -1695,6 +1809,11 @@ class MainWindow(QMainWindow):
             self.repair_button.setVisible(
                 self.root_state_check is not None
                 and self.root_state_check.repairable
+            )
+            self.retry_button.setVisible(
+                not self._scanning
+                and self.discovery_error is not None
+                and self.config.root is not None
             )
 
         self._update_banner()
@@ -2560,6 +2679,7 @@ class MainWindow(QMainWindow):
         self._quit_application()
 
     def _quit_application(self) -> None:
+        self._stop_root_wait()
         if self._channel is not None:
             self._channel.stop()
             self._channel = None

@@ -785,4 +785,38 @@ self-replacement stays out until there is a signing key, a stable installed
 filename (the autostart entry records the current one), and a decision about
 what a half-finished update may leave behind.
 
+## 44. Wait for a missing watched root instead of failing once
+
+**Context:** Once repopull starts at login next to a removable disk, the first
+scan races the mount. On this machine the window started 1.3 s before the
+filesystem was mounted, found no watched folder, and showed the error; the
+automatic schedule then waited a full interval — three hours — before looking
+again, because a run with zero repositories deliberately waits an interval
+rather than spinning. From the outside that looks like repopull having lost the
+folder, and the only visible remedy was re-selecting the same path, which
+happened to rescan it.
+
+The scan itself cannot tell a late mount from a deleted folder, and it should
+not: retrying forever would hide a genuinely broken configuration, and a
+`Refresh status` loop would keep rewriting the report for an empty root.
+
+**Decision:** When a scan leaves the library empty because the watched path does
+not exist, the window arms its own single-shot timer and probes the path every
+5 s for up to 10 minutes, rescanning on the first hit, and stops the timer on any
+successful scan, on quit, and on **Try again**. The wait is a path check in the
+GUI, not a udev or udisks subscription, and it is not part of the refresh
+policy: the auto-refresh timers keep their own schedule. The first failed scan
+writes one reason line to stderr, which systemd keeps in the journal, and
+giving up writes another. **Try again** is offered for any failed scan; the wait
+only applies where the path is missing.
+
+**Consequences:** A login where the disk is a second late no longer costs an
+interval of blindness, and the journal finally records what the window said
+instead of leaving a toast behind. A device that never appears still shows the
+error, after at most ten minutes of probing, and the ten-minute cap keeps a
+wrong path from being probed for the life of the session. The probe costs one
+`stat` per 5 s while it runs, which is cheaper than asking udisks over D-Bus and
+adds no dependency. The limitation — up to 5 s of latency after the mount, and
+no reaction to a disk that arrives after the window — is documented.
+
 For the full documentation index, see [README.md](../README.md#documentation-index).

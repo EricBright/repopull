@@ -42,5 +42,11 @@
 - Starting hidden (`--hidden`) needs a tray host. Without one repopull shows the
   window instead, and a hidden window whose tray host appears later is not
   resurrected in that session.
+- A watched folder on a removable disk can be missing when the window starts at
+  login. repopull then probes the path every 5 s for up to 10 minutes and scans
+  as soon as it appears, but a disk that mounts later than that stays
+  unwatched until the next refresh or **Try again**. The probe is a path
+  check, not a udev or udisks subscription, so there is a delay of up to 5 s
+  even after the mount lands.
 
 For the full documentation index, see [README.md](../README.md#documentation-index).

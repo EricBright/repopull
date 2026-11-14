@@ -42,6 +42,7 @@ if HAVE_PYSIDE:
     from repopull.gui.app import _repair_autostart
     from repopull.gui.instance import ask_to_show
     from repopull.gui.window import DiscoveryTask, MainWindow
+    from repopull.mounts import root_identity
     from repopull.rootstate import RootStateCheck
     from repopull.updates import Release, Version
     from repopull.models import Outcome, Report, Row
@@ -101,14 +102,18 @@ if HAVE_PYSIDE:
                 root.mkdir()
                 logs = base / "logs"
                 logs.mkdir()
+                # Use the identity the machine actually reports: on a runner
+                # whose /tmp has a filesystem UUID, a made-up one would be
+                # refused as "a different filesystem" before the empty check.
+                identity = root_identity(root)
                 (logs / "root-state.json").write_text(
                     json.dumps(
                         {
                             "version": 2,
                             "root": str(root),
-                            "device": root.stat().st_dev,
+                            "device": identity.device,
                             "repo_count": 3,
-                            "filesystem_uuid": "stable-uuid",
+                            "filesystem_uuid": identity.filesystem_uuid,
                         }
                     ),
                     encoding="utf-8",
@@ -118,6 +123,80 @@ if HAVE_PYSIDE:
                 self.assertIn("empty", window.empty_label.text())
                 self.assertIn("Remove", window.empty_label.text())
                 self.assertTrue(window.repair_button.isHidden())
+                window.close()
+
+        def test_a_missing_root_is_waited_for_instead_of_failing_once(
+            self,
+        ) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = base / "repos"
+                window = MainWindow(self._config(base, root))
+
+                self.assertIn("does not exist", window.empty_label.text())
+                self.assertIn(
+                    "Waiting for the folder to appear",
+                    window.empty_label.text(),
+                )
+                self.assertTrue(window.root_wait_timer.isActive())
+                self.assertFalse(window.retry_button.isHidden())
+
+                (root / "alpha" / ".git").mkdir(parents=True)
+                window._root_wait_due()
+                for _ in range(200):
+                    self.app.processEvents()
+                    if window.refs:
+                        break
+                    QTest.qWait(10)
+
+                self.assertEqual([ref.label for ref in window.refs], ["alpha"])
+                self.assertIsNone(window.discovery_error)
+                self.assertFalse(window.root_wait_timer.isActive())
+                self.assertTrue(window.retry_button.isHidden())
+                window.close()
+
+        def test_the_root_wait_gives_up_after_its_window(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = base / "repos"
+                window = MainWindow(self._config(base, root))
+                window._root_wait_deadline = time.monotonic() - 1.0
+
+                window._root_wait_due()
+
+                self.assertFalse(window.root_wait_timer.isActive())
+                self.assertIn("does not exist", window.empty_label.text())
+                self.assertNotIn(
+                    "Waiting for the folder", window.empty_label.text()
+                )
+                self.assertFalse(window.retry_button.isHidden())
+                window.close()
+
+        def test_try_again_scans_after_the_folder_appears(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = base / "repos"
+                window = MainWindow(self._config(base, root))
+                (root / "alpha" / ".git").mkdir(parents=True)
+
+                window.retry_button.click()
+                for _ in range(200):
+                    self.app.processEvents()
+                    if window.refs:
+                        break
+                    QTest.qWait(10)
+
+                self.assertEqual([ref.label for ref in window.refs], ["alpha"])
+                self.assertIsNone(window.discovery_error)
+                window.close()
+
+        def test_a_present_root_does_not_start_the_wait(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                window = MainWindow(self._config(base, self._tree(base)))
+
+                self.assertFalse(window.root_wait_timer.isActive())
+                self.assertTrue(window.retry_button.isHidden())
                 window.close()
 
         def test_root_state_mismatch_offers_and_performs_repair(self) -> None:

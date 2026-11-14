@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- A watched folder on a removable disk can be missing when the window starts at
+  login, because the autostart entry and the mount race each other. The library
+  used to show the error and then wait a whole refresh interval before looking
+  again, which looked like repopull had forgotten the folder. It now probes the
+  path every 5 s for up to 10 minutes and scans as soon as it appears.
+- **Try again** in the empty library rescans after a failed scan, for example
+  once a disk is mounted. It is offered for any discovery failure, not only a
+  missing folder.
+- A scan that finds the watched root missing writes one line to stderr with the
+  reason, which systemd keeps in the journal for
+  `app-repopull@autostart.service`; giving up writes another. Before, the
+  message existed only as a toast and nothing recorded what it said.
+
 ## 0.8.0 — 2026-11-12
 
 - `repopull version --check` and a **Check now** row under Settings → Startup
