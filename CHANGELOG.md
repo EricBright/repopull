@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.8.2 — 2026-11-15
+
+- The automatic status refresh no longer restarts its interval at every launch.
+  The countdown is owed from the last completed check, which `logs/latest.json`
+  records, but the window kept that anchor only in memory: it was empty at every
+  start, so a check that was two days overdue still waited a whole three hours.
+  On 2026-11-15 a login scanned the watched folder, said "Watched folder found;
+  scanning it now.", and then did nothing until the interval expired. The saved
+  check is now read back at startup, so an overdue check runs within a minute of
+  the window opening and a launch shortly after a check waits only the rest.
+- "No completed check" now means due now, not "due one interval from now". The
+  timer and the schedule decision used to disagree about that state; a first run
+  with no saved brief now checks at once instead of a whole interval later.
+- A check that is due but cannot start — every repository held out of status
+  refresh, or a log directory that refuses a run — waits a full interval instead
+  of re-deciding the same due state every few seconds and re-flashing the same
+  message.
+- The interval now counts the repositories that survive the refresh exclusions,
+  so a library where everything is held no longer looks like work waiting to run.
+
 ## 0.8.1 — 2026-11-13
 
 - A disk that disappears while a sweep is running now stops it: the remaining

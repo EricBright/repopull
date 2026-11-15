@@ -38,8 +38,22 @@ Action 5 adds CI guardrails. `make test` runs under `-X dev -X faulthandler
 update and pin policy is in [packaging.md](packaging.md#updates-and-dependency-checks).
 The Rust decision remains gated and no Rust is built.
 
-## Current state and next session (2026-11-13)
+## Current state and next session (2026-11-15)
 
+- **Release 0.8.2:** tag `v0.8.2`,
+  <https://github.com/EricBright/repopull/releases/tag/v0.8.2>. Adds the
+  countdown anchor. 437 tests, 1 expected failure, mypy strict clean,
+  `make audit` clean, README 1,997 words.
+- **AppImage 0.8.2:** `dist/repopull-0.8.2-x86_64.AppImage`, 46,238,200 bytes,
+  SHA-256 `f369078a...802ade3fa`, with
+  `repopull-0.8.2-x86_64.AppImage.zsync` (158,341 bytes,
+  `173cb5d6...f2d40218ed84a`). `--cli version` reports 0.8.2, `.upd_info`
+  carries the `gh-releases-zsync` string, the `.zsync` SHA-1 matches the image's
+  (`58198b82...7f6d6f3c8c`), the offscreen smoke test shows 41 rows on the real
+  watched root, and the extracted `site-packages/repopull` contains
+  `countdown_anchor` and `_defer_auto_refresh`, so the image is not stale. It is
+  the same size as 0.8.1 but not the same file: the SHA-256, the SHA-1 the
+  `.zsync` carries, `--cli version`, and the extracted code all differ.
 - **Release:** 0.8.0, tag `v0.8.0`;
   <https://github.com/EricBright/repopull/releases/tag/v0.8.0>. The tree adds
   bash/fish completions, launch at login with a hidden tray start, the release
@@ -156,8 +170,19 @@ The Rust decision remains gated and no Rust is built.
   Known gaps left: a remounted disk that lands on a different path is not
   re-found by filesystem UUID, and a dirty tree from an interrupted update needs
   a human.
-- **Next:** nothing is in flight. 0.8.1 carries the mount guard and the
-  power-loss hardening on top of the `.upd_info` and `.zsync` that 0.8.0
+- **Countdown anchor (2026-11-15):** the login at 2026-11-15 12:06 found the
+  watched folder six seconds later and then did nothing, because the window
+  anchored the refresh interval only in memory and "no check yet" meant a whole
+  interval to the schedule decision but "due" to the timer. The anchor is now
+  read back from `logs/latest.json` through a wall-clock-to-monotonic
+  conversion, a missing check means due now in both events, and a due check
+  that cannot start defers one interval instead of re-deciding every tick. 10
+  new tests: 4 for the anchor, 1 for `Report.finished_at`, 5 GUI tests covering
+  a recent saved check, an old one, none at all, no runnable repository, and a
+  log directory that refuses the run. Decision 46 records why.
+- **Next:** nothing is in flight. 0.8.2 carries the countdown anchor fix on top
+  of the mount guard and the power-loss hardening in 0.8.1, and of the
+  `.upd_info` and `.zsync` that 0.8.0
   introduced, so Gear Lever and AppImageUpdate can update an installed copy.
   Known follow-ups: native zsh completion, a `--hidden` start that waits for a
   late tray host, signature-key setup before any self-replacement, re-finding a
