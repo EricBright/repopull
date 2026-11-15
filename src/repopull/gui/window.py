@@ -99,6 +99,7 @@ from repopull.refresh import (
     RefreshState,
     SuspendDetector,
     clamp_auto_refresh_s,
+    countdown_anchor,
     decide_refresh,
     should_warn,
 )
@@ -300,7 +301,18 @@ class MainWindow(QMainWindow):
         self._network_offline = bool(
             self.report is not None and self.report.network_error
         )
-        self._last_network_finished: float | None = None
+        # The countdown is owed from the last completed check, which the saved
+        # brief records. Starting from nothing would restart the whole interval
+        # at every login, so a check that was due an hour ago would wait hours.
+        self._last_network_finished: float | None = countdown_anchor(
+            (
+                self.report.finished_at.timestamp()
+                if self.report is not None
+                else None
+            ),
+            monotonic_now=time.monotonic(),
+            wall_now=time.time(),
+        )
         self.current_label: str | None = None
 
         self.setWindowTitle("repopull")
@@ -2813,7 +2825,7 @@ class MainWindow(QMainWindow):
             window_available=self.isVisible() and not self.isMinimized(),
             pause_when_hidden=self.config.auto_refresh_pause_when_hidden,
             in_flight=self._background_active,
-            has_repos=bool(self.refs),
+            has_repos=bool(self._status_refs()),
             network_offline=self._network_offline,
             failures=self._auto_failures,
             last_finished=self._last_network_finished,
@@ -2836,7 +2848,7 @@ class MainWindow(QMainWindow):
         self.auto_timer.stop()
         refs = self._status_refs()
         if not refs:
-            self._schedule_auto_refresh()
+            self._defer_auto_refresh()
             return
         self._start_run(refs, force=False, mode="status", auto=True)
         self._update_auto_feedback()
@@ -2861,6 +2873,23 @@ class MainWindow(QMainWindow):
                 jitter_s=self._jitter_seconds(),
             )
         )
+
+    def _defer_auto_refresh(self) -> None:
+        """Wait a whole interval after a due check that could not start.
+
+        Asking the decision table again would read the same due state and try
+        to run again on the next tick, because a due check stays due until a
+        run completes. Nothing completes when there is nothing to check or the
+        log directory refuses the run, so the next attempt is put a full
+        interval out instead of being re-decided immediately.
+        """
+        interval = self.config.auto_refresh_s
+        if interval <= 0:
+            self.auto_timer.stop()
+        else:
+            delay = interval + self._jitter_seconds()
+            self.auto_timer.start(int(delay * 1000))
+        self._update_auto_feedback()
 
     def _auto_refresh_due(self) -> None:
         self._check_suspend()
@@ -2984,13 +3013,13 @@ class MainWindow(QMainWindow):
         if not refs:
             self._flash("No repositories to run.")
             if auto:
-                self._schedule_auto_refresh()
+                self._defer_auto_refresh()
             return
         problem = check_log_dir(self.config.log_dir)
         if problem is not None:
             self._flash(problem)
             if auto:
-                self._schedule_auto_refresh()
+                self._defer_auto_refresh()
             return
         if not auto:
             self.auto_timer.stop()

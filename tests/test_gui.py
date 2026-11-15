@@ -12,7 +12,7 @@ import tempfile
 import time
 import unittest
 import weakref
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Event
 from unittest.mock import patch
@@ -1270,6 +1270,144 @@ if HAVE_PYSIDE:
                     window.settings_auto_minutes.setValue(30)
                     self.assertAlmostEqual(
                         window.auto_timer.interval(), 1_200_000, delta=3_000
+                    )
+                window.request_quit()
+
+        def test_launch_continues_the_saved_checks_countdown(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = self._tree(base)
+                write_log(
+                    Report(
+                        mode="status",
+                        started_at=datetime.now() - timedelta(minutes=10),
+                        elapsed_s=1.0,
+                        rows=(Row("alpha", "main", Outcome.UP_TO_DATE, 0, ""),),
+                    ),
+                    base / "logs",
+                )
+                config = dataclasses.replace(
+                    self._config(base, root), auto_refresh_s=900
+                )
+                with patch.object(
+                    MainWindow, "_jitter_seconds", return_value=0.0
+                ):
+                    window = MainWindow(config)
+
+                # Ten of the fifteen minutes are spent, and a launch does not
+                # restart the interval from zero.
+                self.assertAlmostEqual(
+                    window.auto_timer.remainingTime() / 1_000,
+                    300,
+                    delta=5,
+                )
+                window.request_quit()
+
+        def test_a_saved_check_older_than_the_interval_runs_at_launch(
+            self,
+        ) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = self._tree(base)
+                write_log(
+                    Report(
+                        mode="status",
+                        started_at=datetime.now() - timedelta(days=2),
+                        elapsed_s=1.0,
+                        rows=(Row("alpha", "main", Outcome.UP_TO_DATE, 0, ""),),
+                    ),
+                    base / "logs",
+                )
+                config = dataclasses.replace(
+                    self._config(base, root), auto_refresh_s=900
+                )
+                with patch.object(
+                    MainWindow, "_jitter_seconds", return_value=0.0
+                ):
+                    window = MainWindow(config)
+
+                self.assertLessEqual(window.auto_timer.remainingTime(), 1_000)
+                with patch.object(window, "_start_run") as start:
+                    window._auto_refresh_due()
+
+                start.assert_called_once()
+                self.assertEqual(
+                    start.call_args.kwargs,
+                    {"force": False, "mode": "status", "auto": True},
+                )
+                self.assertEqual(len(start.call_args.args[0]), 3)
+                window.request_quit()
+
+        def test_no_saved_check_is_due_at_launch(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                config = dataclasses.replace(
+                    self._config(base, self._tree(base)),
+                    auto_refresh_s=900,
+                )
+                with patch.object(
+                    MainWindow, "_jitter_seconds", return_value=0.0
+                ):
+                    window = MainWindow(config)
+
+                self.assertLessEqual(window.auto_timer.remainingTime(), 1_000)
+                with patch.object(window, "_start_run") as start:
+                    window._auto_refresh_due()
+
+                start.assert_called_once()
+                window.request_quit()
+
+        def test_a_due_check_with_nothing_to_run_waits_an_interval(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                config = dataclasses.replace(
+                    self._config(base, self._tree(base)),
+                    auto_refresh_s=900,
+                    exclude_from_refresh=("alpha", "beta", "gamma"),
+                )
+                with patch.object(
+                    MainWindow, "_jitter_seconds", return_value=0.0
+                ):
+                    window = MainWindow(config)
+
+                    with patch.object(window, "_start_run") as start:
+                        window._auto_refresh_due()
+
+                    start.assert_not_called()
+                    self.assertAlmostEqual(
+                        window.auto_timer.remainingTime() / 1_000,
+                        900,
+                        delta=5,
+                    )
+                window.request_quit()
+
+        def test_a_due_check_that_cannot_log_waits_an_interval(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                config = dataclasses.replace(
+                    self._config(base, self._tree(base)),
+                    auto_refresh_s=900,
+                )
+                with patch.object(
+                    MainWindow, "_jitter_seconds", return_value=0.0
+                ):
+                    window = MainWindow(config)
+                    blocker = base / "blocker"
+                    blocker.write_text("not a directory", encoding="utf-8")
+                    window.config = dataclasses.replace(
+                        window.config, log_dir=blocker / "logs"
+                    )
+
+                    window._auto_refresh_due()
+
+                    self.assertIn(
+                        "cannot create log directory",
+                        window.status_message.text(),
+                    )
+                    self.assertAlmostEqual(
+                        window.auto_timer.remainingTime() / 1_000,
+                        900,
+                        delta=5,
                     )
                 window.request_quit()
 

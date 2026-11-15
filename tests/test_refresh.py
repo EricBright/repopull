@@ -21,6 +21,7 @@ from repopull.refresh import (
     SuspendDetector,
     clamp_auto_refresh_s,
     cooldown_remaining,
+    countdown_anchor,
     decide_refresh,
     next_delay,
     should_warn,
@@ -139,8 +140,47 @@ class DelayTests(unittest.TestCase):
         self.assertEqual(
             wait_remaining(500.0, 900, 0, 2_000.0), 0.0
         )
+        # No completed check: nothing is being waited out, so it is due now.
         self.assertEqual(
-            wait_remaining(None, 900, 0, 1_000.0), 900.0
+            wait_remaining(None, 900, 0, 1_000.0), 0.0
+        )
+
+
+class CountdownAnchorTests(unittest.TestCase):
+    def test_no_saved_check_has_no_anchor(self) -> None:
+        self.assertIsNone(
+            countdown_anchor(None, monotonic_now=1_000.0, wall_now=9_000.0)
+        )
+
+    def test_a_recent_check_keeps_its_place(self) -> None:
+        self.assertEqual(
+            countdown_anchor(
+                8_400.0, monotonic_now=1_000.0, wall_now=9_000.0
+            ),
+            400.0,
+        )
+
+    def test_an_old_check_is_overdue(self) -> None:
+        # Forty-eight hours of wall clock became forty-eight hours of
+        # monotonic time, so the next check is already due.
+        self.assertEqual(
+            countdown_anchor(
+                9_000.0 - 172_800.0,
+                monotonic_now=1_000.0,
+                wall_now=9_000.0,
+            ),
+            1_000.0 - 172_800.0,
+        )
+
+    def test_a_future_check_counts_as_just_finished(self) -> None:
+        # A clock that moved backwards must not postpone the check by hours.
+        self.assertEqual(
+            countdown_anchor(
+                9_000.0 + 14_400.0,
+                monotonic_now=1_000.0,
+                wall_now=9_000.0,
+            ),
+            1_000.0,
         )
 
 
@@ -177,11 +217,15 @@ class DecisionTests(unittest.TestCase):
 
     def test_hidden_pause_off_keeps_scheduling(self) -> None:
         decision = decide_refresh(
-            state(window_available=False, pause_when_hidden=False),
+            state(
+                window_available=False,
+                pause_when_hidden=False,
+                last_finished=500.0,
+            ),
             RefreshEvent.SCHEDULE,
         )
 
-        self.assert_wait(decision, 900.0)
+        self.assert_wait(decision, 400.0)
 
     def test_resume_pending_stops_without_clearing(self) -> None:
         for event in (
@@ -195,10 +239,10 @@ class DecisionTests(unittest.TestCase):
             self.assertIs(decision.action, RefreshAction.STOP)
             self.assertFalse(decision.clear_resume)
 
-    def test_schedule_waits_interval(self) -> None:
+    def test_schedule_without_a_completed_check_is_due(self) -> None:
         decision = decide_refresh(state(), RefreshEvent.SCHEDULE)
 
-        self.assert_wait(decision, 900.0)
+        self.assert_wait(decision, 0.0)
         self.assertTrue(decision.clear_resume)
 
     def test_schedule_waits_only_the_remaining_interval(self) -> None:
@@ -237,7 +281,7 @@ class DecisionTests(unittest.TestCase):
 
     def test_schedule_uses_network_retry_ladder(self) -> None:
         decision = decide_refresh(
-            state(network_offline=True, failures=1),
+            state(last_finished=1_000.0, network_offline=True, failures=1),
             RefreshEvent.SCHEDULE,
         )
 
@@ -245,7 +289,7 @@ class DecisionTests(unittest.TestCase):
 
     def test_schedule_uses_failure_backoff(self) -> None:
         decision = decide_refresh(
-            state(failures=1), RefreshEvent.SCHEDULE
+            state(last_finished=1_000.0, failures=1), RefreshEvent.SCHEDULE
         )
 
         self.assert_wait(decision, 1_800.0)
@@ -387,10 +431,10 @@ class DecisionTests(unittest.TestCase):
 
     def test_jitter_is_added_once(self) -> None:
         decision = decide_refresh(
-            state(), RefreshEvent.SCHEDULE, jitter_s=10.0
+            state(last_finished=500.0), RefreshEvent.SCHEDULE, jitter_s=10.0
         )
 
-        self.assert_wait(decision, 910.0)
+        self.assert_wait(decision, 410.0)
 
 
 class SuspendDetectorTests(unittest.TestCase):

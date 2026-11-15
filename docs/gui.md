@@ -172,8 +172,14 @@ background.
 **Refresh status automatically** is status-only, off by default, has a 5-minute
 hard floor, and shows an orange warning below 15 minutes. The countdown runs
 from the last completed check; showing the window or changing the interval does
-not restart it. The sidebar, Refresh section, and tray tooltip show the next
-scheduled check.
+not restart it. That check is read back from `logs/latest.json` at launch, so a
+restart resumes the countdown instead of starting a fresh interval: a login
+after a long gap runs one check within a minute, and a login minutes after a
+check waits only the remainder. With no completed check on record, the first
+check is due at once. A check that is due but cannot start — every repository is
+held out of status refresh, or the log directory refuses a run — is retried
+after a full interval rather than on every tick. The sidebar, Refresh section,
+and tray tooltip show the next scheduled check.
 A manual status or sync resets the next automatic run. On Linux, when automatic
 refresh is on, a wake from suspend is detected and the app waits 60 seconds for
 the desktop and network to settle before running one status check; missed

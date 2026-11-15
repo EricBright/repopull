@@ -66,3 +66,15 @@ class ReportTests(unittest.TestCase):
         )
 
         self.assertFalse(report.has_errors)
+
+    def test_finished_at_is_the_start_plus_the_duration(self) -> None:
+        report = Report(
+            mode="status",
+            started_at=datetime(2026, 11, 5, 16, 0, 0),
+            elapsed_s=12.5,
+            rows=(),
+        )
+
+        self.assertEqual(
+            report.finished_at, datetime(2026, 11, 5, 16, 0, 12, 500_000)
+        )

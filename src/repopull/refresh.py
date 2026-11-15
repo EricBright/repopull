@@ -134,11 +134,37 @@ def wait_remaining(
     finish. Re-scheduling an already running countdown must not restart it:
     showing the window, hiding it, or changing an unrelated setting should only
     wait for whatever time is left.
+
+    With no completed run there is no countdown to wait out, so the next check
+    is due now. The timer event already answers this way; a whole interval here
+    would make the same state mean two different things, and would push the
+    first check of a session hours away whenever the anchor is missing.
     """
-    gap = next_delay(interval_s, failures, network=network)
     if last_finished is None:
-        return gap
+        return 0.0
+    gap = next_delay(interval_s, failures, network=network)
     return max(0.0, last_finished + gap - now)
+
+
+def countdown_anchor(
+    finished_ts: float | None,
+    *,
+    monotonic_now: float,
+    wall_now: float,
+) -> float | None:
+    """Translate the saved last check into a monotonic countdown anchor.
+
+    A launch is not a fresh start. `latest.json` records when the last run
+    finished, and the countdown is owed from that moment, not from the moment
+    the window opened; without this the interval silently restarts at every
+    login. The record is wall clock and the timers are monotonic, so convert.
+    A stamp in the future (a clock that moved back) counts as just finished
+    instead of postponing the check by however far the clock jumped.
+    """
+    if finished_ts is None:
+        return None
+    age = wall_now - finished_ts
+    return monotonic_now - max(0.0, age)
 
 
 def _wait(state: RefreshState, jitter_s: float) -> RefreshDecision:

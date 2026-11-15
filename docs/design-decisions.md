@@ -858,4 +858,37 @@ gone stays on screen instead of being polled forever. The fsync costs one disk
 flush when a startup switch is toggled, and the clone sweep costs one directory
 scan per discovery. Nothing here touches the watched repositories.
 
+## 46. Measure the interval from the last completed check, not from launch
+
+**Context:** The automatic status refresh has always been described as a
+countdown from the last completed check. The window kept that anchor only in
+memory: `_last_network_finished` was `None` at every launch, and the decision
+table answered "no completed check" two different ways. The timer event treated
+it as due; the schedule event waited a whole interval. So a launch with a disk
+that had been checked two days earlier still waited the full three hours before
+touching the network, and the window's own "watched folder found; scanning it
+now" was the last thing that happened. The record of the last check existed on
+disk all along, in `logs/latest.json`; nothing read it back for scheduling.
+
+**Decision:** The anchor is derived from that record when the window starts.
+`Report.finished_at` (start plus elapsed) is wall clock, so
+`countdown_anchor()` converts it once into the monotonic clock the timers use,
+counting a stamp in the future as "just finished" rather than postponing the
+check by however far a clock change moved. "No completed check" now means the
+same thing in every event: due now. And a check that is due but cannot start —
+no repository survives the refresh exclusions, or the log directory refuses a
+run — waits a whole interval before the next attempt, because a due state stays
+due until a run completes, so re-deciding it immediately would retry on every
+tick.
+
+**Consequences:** A login after a long gap checks straight away instead of
+hours later, which is what "status refresh every three hours" was supposed to
+mean; a launch moments after a check waits only the remainder, so restarting the
+window does not refetch forty repositories. A first run with no saved brief also
+checks at once rather than a whole interval away. Two smaller effects are
+deliberate: the exclusion-aware notion of "has repositories" means the policy is
+told about repositories it will actually check, and the deferral replaces a
+retry loop that used to re-flash a log-directory problem every jittered tick
+when it was overdue.
+
 For the full documentation index, see [README.md](../README.md#documentation-index).

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
 
@@ -93,3 +93,8 @@ class Report:
     def has_errors(self) -> bool:
         """True when at least one repo errored."""
         return self.count(Outcome.ERROR) > 0
+
+    @property
+    def finished_at(self) -> datetime:
+        """When the run ended, by the wall clock it started with."""
+        return self.started_at + timedelta(seconds=self.elapsed_s)
