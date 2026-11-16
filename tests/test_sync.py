@@ -349,6 +349,81 @@ class NetworkFailFastTests(unittest.TestCase):
             )
             self.assertEqual(fetch.call_count, 1)
 
+    def test_an_unreadable_root_skips_the_rest_without_fetching(self) -> None:
+        if os.geteuid() == 0:
+            self.skipTest("directory modes do not restrict root")
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            holder = base / "holder"
+            watched = holder / "watched"
+            watched.mkdir(parents=True)
+            config = Config(
+                root=watched,
+                fetch_timeout_s=30,
+                command_timeout_s=30,
+                delay_between_repos_s=0,
+                update_submodules=False,
+                log_dir=base / "logs",
+            )
+            refs = [
+                RepoRef(watched / name, name)
+                for name in ("alpha", "beta", "gamma")
+            ]
+            states = [_state(ref=ref) for ref in refs]
+            ok = git.GitResult(
+                args=("git", "fetch"),
+                returncode=0,
+                stdout="",
+                stderr="",
+                timeout_s=30,
+            )
+
+            def fetch_once(*_args: object, **_kwargs: object) -> git.GitResult:
+                # The mount goes away while the first repository works; an
+                # unmount in progress reads as permission denied.
+                os.chmod(holder, 0o000)
+                return ok
+
+            try:
+                with (
+                    patch("repopull.sync._collect", return_value=states),
+                    patch(
+                        "repopull.sync.inspect_repo",
+                        side_effect=lambda ref, **_kwargs: _state(ref=ref),
+                    ),
+                    patch(
+                        "repopull.sync.git.git_lfs_available",
+                        return_value=True,
+                    ),
+                    patch(
+                        "repopull.sync.git.fetch", side_effect=fetch_once
+                    ) as fetch,
+                ):
+                    rows, network_error = _run(
+                        refs,
+                        config,
+                        force=False,
+                        preview=True,
+                        progress=None,
+                        on_row=None,
+                        cancel=None,
+                    )
+            finally:
+                os.chmod(holder, 0o755)
+
+            self.assertFalse(network_error)
+            self.assertEqual(
+                [row.label for row in rows], ["alpha", "beta", "gamma"]
+            )
+            self.assertIs(rows[0].outcome, Outcome.UP_TO_DATE)
+            self.assertEqual(
+                rows[1].detail, "not attempted: watched folder disappeared"
+            )
+            self.assertEqual(
+                rows[2].detail, "not attempted: watched folder disappeared"
+            )
+            self.assertEqual(fetch.call_count, 1)
+
 
 class SyncIntegrationTests(unittest.TestCase):
     def setUp(self) -> None:

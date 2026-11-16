@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import subprocess
+import unittest
+from collections.abc import Iterator
 from pathlib import Path
 
 _ISOLATED = {
@@ -65,3 +68,21 @@ def commit_upstream(seed: Path, content: str, message: str) -> None:
     git("add", "file.txt", cwd=seed)
     git("commit", "-m", message, cwd=seed)
     git("push", "origin", "main", cwd=seed)
+
+
+@contextlib.contextmanager
+def unsearchable(path: Path) -> Iterator[None]:
+    """Make `path` unsearchable for the duration of the block.
+
+    This reproduces a watched folder on a disk that is still mounting: a
+    path component without search permission makes `stat` fail with
+    permission denied, which is what the kernel reports mid-mount. Directory
+    modes do not restrict a privileged user, so the test skips under root.
+    """
+    if os.geteuid() == 0:
+        raise unittest.SkipTest("directory modes do not restrict root")
+    os.chmod(path, 0o000)
+    try:
+        yield
+    finally:
+        os.chmod(path, 0o755)

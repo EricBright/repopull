@@ -15,6 +15,22 @@ from repopull.refresh import clamp_auto_refresh_s
 DEFAULT_ROOT: Final[Path | None] = None
 """No watched folder is assumed; the user chooses one on first run."""
 
+STARTUP_DELAY_MIN_S: Final[int] = 10
+STARTUP_DELAY_MAX_S: Final[int] = 30
+STARTUP_DELAY_DEFAULT_S: Final[int] = 10
+"""Quiet period after a GUI start, in seconds, before the first scan.
+
+A freshly logged-in system is still mounting disks and starting session
+services, and a scan that lands inside that window fails on a path that is
+not searchable yet. The floor is deliberate: the period cannot be turned
+off, only tuned between 10 and 30 seconds.
+"""
+
+
+def clamp_startup_delay_s(seconds: int) -> int:
+    """Clamp the post-startup quiet period into 10–30 seconds."""
+    return max(STARTUP_DELAY_MIN_S, min(STARTUP_DELAY_MAX_S, seconds))
+
 _KNOWN_KEYS: Final[frozenset[str]] = frozenset(
     {
         "root",
@@ -31,6 +47,7 @@ _KNOWN_KEYS: Final[frozenset[str]] = frozenset(
         "background_mode",
         "auto_refresh_s",
         "auto_refresh_pause_when_hidden",
+        "startup_delay_s",
         "log_dir",
         "log_retention_days",
     }
@@ -72,6 +89,7 @@ class Config:
     background_mode: bool = False
     auto_refresh_s: int = 0
     auto_refresh_pause_when_hidden: bool = False
+    startup_delay_s: int = STARTUP_DELAY_DEFAULT_S
     log_dir: Path = field(default_factory=lambda: project_home() / "logs")
     log_retention_days: int = 30
     # Provenance, so the tool can explain where it is pointing and why.
@@ -194,6 +212,18 @@ def load_config(
             file=sys.stderr,
         )
 
+    raw_startup_delay = _as_non_negative_int(
+        data.get("startup_delay_s", STARTUP_DELAY_DEFAULT_S),
+        "startup_delay_s",
+    )
+    startup_delay_s = clamp_startup_delay_s(raw_startup_delay)
+    if raw_startup_delay != startup_delay_s:
+        print(
+            "repopull: startup_delay_s clamped from "
+            f"{raw_startup_delay} to {startup_delay_s}",
+            file=sys.stderr,
+        )
+
     raw_ignore = _as_string_tuple(data.get("ignore", []), "ignore")
     exclude_from_refresh = _as_string_tuple(
         data.get("exclude_from_refresh", []), "exclude_from_refresh"
@@ -236,6 +266,7 @@ def load_config(
                 data.get("auto_refresh_pause_when_hidden", False),
                 "auto_refresh_pause_when_hidden",
             ),
+            startup_delay_s=startup_delay_s,
             log_dir=log_dir,
             log_retention_days=_as_non_negative_int(
                 data.get("log_retention_days", 30), "log_retention_days"
@@ -314,6 +345,7 @@ def save_config(config: Config, path: Path) -> None:
             f"auto_refresh_s = {config.auto_refresh_s}",
             "auto_refresh_pause_when_hidden = "
             f"{str(config.auto_refresh_pause_when_hidden).lower()}",
+            f"startup_delay_s = {config.startup_delay_s}",
             f"log_dir = {json.dumps(str(config.log_dir))}",
             f"log_retention_days = {config.log_retention_days}",
             "",

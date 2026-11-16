@@ -17,6 +17,8 @@ from pathlib import Path
 from threading import Event
 from unittest.mock import patch
 
+import support
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 try:
@@ -65,6 +67,8 @@ if HAVE_PYSIDE:
                 log_dir=base / "logs",
                 delay_between_repos_s=0,
                 update_submodules=False,
+                # No startup quiet period here; its own test exercises it.
+                startup_delay_s=0,
             )
 
         def _tree(self, base: Path) -> Path:
@@ -197,6 +201,107 @@ if HAVE_PYSIDE:
 
                 self.assertFalse(window.root_wait_timer.isActive())
                 self.assertTrue(window.retry_button.isHidden())
+                window.close()
+
+        def test_startup_delay_defers_the_first_scan(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                config = dataclasses.replace(
+                    self._config(base, self._tree(base)),
+                    startup_delay_s=10,
+                )
+                window = MainWindow(config, discover_async=True)
+
+                self.assertTrue(window.startup_timer.isActive())
+                self.assertEqual(window.startup_timer.interval(), 10_000)
+                self.assertIn("Starting up", window.empty_label.text())
+                self.assertIn("in 10 s", window.empty_label.text())
+                self.assertTrue(window.retry_button.isHidden())
+
+                QThreadPool.globalInstance().waitForDone(500)
+                self.app.processEvents()
+                # The quiet period means nothing has touched the disk yet.
+                self.assertEqual(window.visible_row_count(), 0)
+
+                window.startup_timer.stop()
+                window._startup_delay_elapsed()
+
+                QThreadPool.globalInstance().waitForDone(2_000)
+                self.app.processEvents()
+
+                self.assertEqual(window.visible_row_count(), 3)
+                self.assertIsNone(window.discovery_error)
+                self.assertFalse(window.startup_timer.isActive())
+                window.request_quit()
+
+        def test_a_zero_startup_delay_scans_at_once(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                window = MainWindow(
+                    self._config(base, self._tree(base)),
+                    discover_async=True,
+                )
+
+                self.assertFalse(window.startup_timer.isActive())
+                self.assertNotIn("Starting up", window.empty_label.text())
+
+                QThreadPool.globalInstance().waitForDone(2_000)
+                self.app.processEvents()
+
+                self.assertEqual(window.visible_row_count(), 3)
+                window.request_quit()
+
+        def test_an_unreadable_root_waits_for_it_instead_of_failing(
+            self,
+        ) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                holder = base / "holder"
+                root = holder / "repos"
+                (root / "alpha" / ".git").mkdir(parents=True)
+                with support.unsearchable(holder):
+                    # A disk mid-mount reads as permission denied; the
+                    # window must wait for it like a missing folder.
+                    window = MainWindow(self._config(base, root))
+
+                    self.assertTrue(window.root_wait_timer.isActive())
+                    text = window.empty_label.text()
+                    self.assertIn("isn't accessible yet", text)
+                    self.assertIn(
+                        "Waiting for it; checking again every 5 s", text
+                    )
+                    self.assertFalse(window.retry_button.isHidden())
+
+                window._root_wait_due()
+                for _ in range(200):
+                    self.app.processEvents()
+                    if window.refs:
+                        break
+                    QTest.qWait(10)
+
+                self.assertEqual([ref.label for ref in window.refs], ["alpha"])
+                self.assertIsNone(window.discovery_error)
+                self.assertFalse(window.root_wait_timer.isActive())
+                window.close()
+
+        def test_giving_up_on_an_unreadable_root_says_so(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                holder = base / "holder"
+                root = holder / "repos"
+                root.mkdir(parents=True)
+                with support.unsearchable(holder):
+                    window = MainWindow(self._config(base, root))
+                    self.assertTrue(window.root_wait_timer.isActive())
+                    window._root_wait_deadline = time.monotonic() - 1.0
+
+                    window._root_wait_due()
+
+                self.assertFalse(window.root_wait_timer.isActive())
+                self.assertIn(
+                    "still not accessible", window.status_message.text()
+                )
+                self.assertFalse(window.retry_button.isHidden())
                 window.close()
 
         def test_discovery_removes_an_abandoned_clone_folder(self) -> None:
@@ -735,6 +840,34 @@ if HAVE_PYSIDE:
                 self.assertFalse(window.save_button.isEnabled())
                 self.assertEqual(
                     load_config(config_path=config_path).max_depth, 3
+                )
+                window.close()
+
+        def test_startup_delay_setting_is_bounded_and_saved(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                config_path = base / "config.toml"
+                config = Config(
+                    root=self._tree(base),
+                    log_dir=base / "logs",
+                    delay_between_repos_s=0,
+                    update_submodules=False,
+                    config_path=config_path,
+                    root_source="test",
+                )
+                save_config(config, config_path)
+                window = MainWindow(config)
+
+                window._show_settings()
+                self.assertEqual(window.settings_startup_delay.value(), 10)
+                self.assertEqual(window.settings_startup_delay.minimum(), 10)
+                self.assertEqual(window.settings_startup_delay.maximum(), 30)
+
+                window.settings_startup_delay.setValue(25)
+                window._save_settings()
+
+                self.assertEqual(
+                    load_config(config_path=config_path).startup_delay_s, 25
                 )
                 window.close()
 

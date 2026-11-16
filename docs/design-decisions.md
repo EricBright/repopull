@@ -891,4 +891,60 @@ told about repositories it will actually check, and the deferral replaces a
 retry loop that used to re-flash a log-directory problem every jittered tick
 when it was overdue.
 
+## 47. An unreadable watched root is not ready yet, not a failure
+
+**Context:** A watched folder can live on a removable disk, and a scan that
+lands while the mount is still coming up fails: the kernel reports permission
+denied for a path it cannot search yet, not "not found". The two answers
+divided the code. "Not found" was already a first-class condition — the window
+probed every 5 seconds for ten minutes and rescanned when the folder appeared.
+Permission denied was a raw error: it surfaced as an errno string, and the
+readiness check itself used `Path.exists()`, which raises `PermissionError` on
+some Python versions and returns `False` on others. That check runs inside the
+scan-failure handler, so on a raising version the handler dies before it can
+arm the probe it was about to arm, and the window stays on a raw errno until
+someone clicks **Try again**.
+
+**Decision:** Every caller asks one question through `root_condition()` in
+`discovery.py` — a single raw `os.stat` classified as `READY`, `MISSING`,
+`INACCESSIBLE`, or `NOT_A_DIRECTORY` — and anything other than `READY` means
+"not usable yet": wait and retry. `discover_repos` turns the state into a
+`DiscoveryError` with a human message instead of leaking an errno; the sweep
+treats an unreadable root like a vanished one instead of failing repository by
+repository; `repopull where` reports `inaccessible`. The raw `os.stat` is
+deliberate: it answers the same way on every supported Python, unlike
+`pathlib`.
+
+**Consequences:** A mount that outlasts the first scan heals itself within one
+probe interval on every Python version, and the failure handler can no longer
+crash before arming its own recovery. The message says what is happening
+("isn't accessible yet — the disk may still be mounting") rather than an errno.
+A genuinely wrong permission setup behaves like a missing folder: it waits out
+the ten-minute window, then gives up on screen with **Try again** still
+offered.
+
+## 48. Let the system settle before the first demand
+
+**Context:** Login is the busiest moment of a session: disks are still
+mounting, session services are still starting, and an app launched at login
+that immediately scans or refreshes competes with all of it — and races the
+mount, which is how decision 47's failure happened in the first place.
+Polling-until-ready fixes correctness, but a deliberate quiet period after
+start is the right product behaviour: nothing should ask the system for
+anything the moment it comes up.
+
+**Decision:** `startup_delay_s` (Settings → **Startup**, 10–30 seconds,
+default 10, clamped on load, no way to set it lower) holds back the first scan
+of the watched folder — and with it anything due to run, since refresh and sync
+cannot start until discovery returns repositories — from the moment a GUI
+window starts. During the wait the empty view says how long is left; what
+waits is the automatic work, while manual actions stay available. Unattended
+runs (`--screenshot`, `--smoke-test`) scan immediately.
+
+**Consequences:** An autostart after login lands outside the mount window in
+practice, and a manual start gets the same quiet period — ten seconds of
+"Starting up" before the library fills, which is exactly the floor the setting
+deliberately enforces. The wait applies to every launch, cost included, and
+decision 47's probe still covers any mount that outlasts it.
+
 For the full documentation index, see [README.md](../README.md#documentation-index).

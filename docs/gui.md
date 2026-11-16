@@ -23,9 +23,13 @@ It runs natively on Wayland and X11; the platform choice is left to Qt.
 what the autostart entry uses.
 
 On first run there is **no watched folder**. Open **Settings** and choose one;
-the library then fills. Nothing is hard-coded into the app. The initial scan and its root-state identity check
-run in a background worker, so a slow or missing mount does not freeze the
-window; the empty view says it is scanning until the result arrives.
+the library then fills. Nothing is hard-coded into the app. The initial scan
+and its root-state identity check run in a background worker, so a slow or
+missing mount does not freeze the window; the empty view says it is scanning
+until the result arrives. A normal start first waits out **Startup delay**
+(10–30 s, default 10), so a freshly logged-in system finishes settling before
+the first scan; during it the empty view says "Starting up — the watched folder
+will be scanned in N s…".
 
 If the watched folder now resolves to a different filesystem, the library
 explains the mismatch and offers **Repair saved root state**. The confirmation
@@ -99,22 +103,25 @@ restored; a detail page is restored only if that repository is still present.
 ### When the watched folder is not there yet
 
 At login the window can start before a removable disk is mounted, so the first
-scan may find the watched folder missing. That is expected, not a reason to
-forget the folder: while the path does not exist the library says so and
-repopull probes it every 5 s for up to 10 minutes, then scans as soon as it
-appears. The message shows the wait, the reason is written to stderr (the
-journal, under `app-repopull@autostart.service`), and the wait stops on the
-first successful scan. **Try again** runs the scan immediately instead of
-waiting for the next probe; it is offered for any failed scan, not only a
-missing folder.
+scan may find the watched folder missing or not readable yet: a mount in
+progress reports permission denied rather than not found. Either way the folder
+is "not usable yet", which is expected, not a reason to forget it: the library
+says so — an unreadable folder reads "`…` isn't accessible yet — the disk may
+still be mounting" — and repopull probes it every 5 s for up to 10 minutes,
+then scans as soon as it can. The message shows the wait, the reason is written
+to stderr (the journal, under `app-repopull@autostart.service`), and the wait
+stops on the first successful scan. **Try again** runs the scan immediately
+instead of waiting for the next probe; it is offered for any failed scan, not
+only a missing folder.
 
-Giving up is deliberate: a path that never appears, or a folder that exists but
-holds no repositories, is a real problem and stays on screen until you fix it.
+Giving up is deliberate: a path that never appears or never becomes readable,
+or a folder that exists but holds no repositories, is a real problem and stays
+on screen until you fix it.
 
 The same wait covers a disk that disappears while the window is running, which
 a loose USB plug or a driver hiccup can do without any process noticing. A
-sweep that finds the watched folder gone stops at once instead of reporting
-every repository as broken: the rest are marked
+sweep that finds the watched folder gone or unreadable stops at once instead of
+reporting every repository as broken: the rest are marked
 `not attempted: watched folder disappeared`, the status bar says the folder is
 missing, and the probe runs until it comes back. A resume after suspend checks
 the folder too, because a disk can go away while the machine is asleep. Until
@@ -203,7 +210,8 @@ window: it asks the running one to come forward and exits. That matters when
 the first launch is hidden in the tray, where a dialog would be the only thing
 the user ever saw.
 
-**Startup** holds two switches, saved nowhere in `config.toml`: the entry is the
+**Startup** holds two switches and the startup delay. The switches are saved
+nowhere in `config.toml`: the entry is the
 state. **Launch at login** writes `repopull.desktop` to
 `$XDG_CONFIG_HOME/autostart` (usually `~/.config/autostart`) and removes it when
 switched off; **Open hidden in the tray** adds `--hidden` to its `Exec` line.
@@ -217,6 +225,13 @@ broken entry. If the recorded program disappears, the entry is repaired on the
 next launch, keeping its hidden flag; a working entry is never repointed just
 because a different build was launched. Paths with spaces, quotes, `$`, `%`, or
 newlines are quoted and escaped as the Desktop Entry spec requires.
+
+**Startup delay** is an ordinary Settings field: **Save unsaved settings**
+writes it to `startup_delay_s` (10–30 s, default 10, never off). It holds back
+the first scan — and anything scheduled to run with it — from the moment the
+app starts, so a freshly booted system gets time to settle before repopull
+asks the disk for anything. The empty view says how long is left. Manual
+actions stay available while it waits; what waits is the automatic work.
 
 **Startup** also holds the update check: **Check now** asks GitHub for the newest
 release in the background and the note under it reports "latest" or the newer

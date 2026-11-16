@@ -65,6 +65,7 @@ Command-line flags override the file. `--root` overrides `root`.
 | `background_mode` | boolean | `false` | Keep running in the system tray when the window is closed. |
 | `auto_refresh_s` | integer (`0` or 300–86400) | `0` | Automatic **status** refresh interval. `0` is off; 1–299 clamp to 300, above 86400 clamps down. |
 | `auto_refresh_pause_when_hidden` | boolean | `false` | Stop automatic status refresh while the window is closed to the tray or minimized. The next check runs when the window returns, if the interval is due. |
+| `startup_delay_s` | integer (10–30) | `10` | Quiet period after a GUI start before the first scan of the watched folder, and with it anything due to run. Below 10 clamps up, above 30 clamps down; it cannot be turned off. |
 | `log_retention_days` | integer ≥ 0 | `30` | Delete timestamped run logs older than this after each run. `0` keeps forever; `latest.*` and `.lock` are never deleted. |
 
 Unknown keys are reported on stderr and ignored, so a newer config does not break
@@ -136,13 +137,26 @@ without hammering a long outage.
 
 ## Startup at login
 
-The two Startup switches are the one GUI setting with no key in this file. They
+The two Startup switches are GUI settings with no key in this file: they
 write or delete `$XDG_CONFIG_HOME/autostart/repopull.desktop` (usually
 `~/.config/autostart`), and that file is the state, so editing it in the
 desktop's own autostart panel changes what the switches show. The `Exec` line is
 the command repopull was running when the switch was set, so a hand-written key
 would only be a second copy to disagree with. See
 [gui.md](gui.md#settings) for the details and the quoting rules.
+
+## Startup delay
+
+`startup_delay_s` is the quiet period between a GUI start and the first scan of
+the watched folder — and with it, anything due to run. A freshly logged-in
+system is still mounting disks and starting session services, and a scan
+launched inside that window can land on a path that is not readable yet. The
+value is clamped to 10–30 seconds and cannot be turned off; 10 is both the
+default and the floor. The GUI edits it in Settings → **Startup** and saves it
+with the other fields. Unattended runs (`--screenshot`, `--smoke-test`) scan
+immediately: the wait is for an interactive start, and the readiness check
+described in [gui.md](gui.md#when-the-watched-folder-is-not-there-yet) covers
+any mount that takes longer than the delay.
 
 ## Environment variables
 

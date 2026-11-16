@@ -112,6 +112,7 @@ class SaveConfigTests(unittest.TestCase):
         self.assertFalse(defaults.background_mode)
         self.assertEqual(defaults.auto_refresh_s, 0)
         self.assertFalse(defaults.auto_refresh_pause_when_hidden)
+        self.assertEqual(defaults.startup_delay_s, 10)
         self.assertEqual(defaults.log_retention_days, 30)
 
     def test_empty_file_uses_the_same_defaults(self) -> None:
@@ -194,6 +195,30 @@ class SaveConfigTests(unittest.TestCase):
             self.assertEqual(loaded.auto_refresh_s, 86_400)
             self.assertIn("clamped", stderr.getvalue())
 
+    def test_startup_delay_below_the_floor_is_clamped_up(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.toml"
+            path.write_text("startup_delay_s = 5\n", encoding="utf-8")
+            stderr = io.StringIO()
+
+            with redirect_stderr(stderr):
+                loaded = load_config(config_path=path)
+
+            self.assertEqual(loaded.startup_delay_s, 10)
+            self.assertIn("clamped", stderr.getvalue())
+
+    def test_startup_delay_above_the_max_is_clamped_down(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.toml"
+            path.write_text("startup_delay_s = 999\n", encoding="utf-8")
+            stderr = io.StringIO()
+
+            with redirect_stderr(stderr):
+                loaded = load_config(config_path=path)
+
+            self.assertEqual(loaded.startup_delay_s, 30)
+            self.assertIn("clamped", stderr.getvalue())
+
     def test_save_without_root_writes_template(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -225,6 +250,7 @@ class SaveConfigTests(unittest.TestCase):
                 background_mode=True,
                 auto_refresh_s=900,
                 auto_refresh_pause_when_hidden=True,
+                startup_delay_s=25,
                 update_submodules=False,
                 require_git_lfs_for_lfs_repos=False,
                 exclude_from_refresh=("vendor/one",),
@@ -243,6 +269,7 @@ class SaveConfigTests(unittest.TestCase):
             self.assertTrue(loaded.background_mode)
             self.assertEqual(loaded.auto_refresh_s, 900)
             self.assertTrue(loaded.auto_refresh_pause_when_hidden)
+            self.assertEqual(loaded.startup_delay_s, 25)
             self.assertAlmostEqual(loaded.delay_between_repos_s, 1.5)
             self.assertFalse(loaded.update_submodules)
             self.assertFalse(loaded.require_git_lfs_for_lfs_repos)

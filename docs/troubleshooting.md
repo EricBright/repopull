@@ -40,6 +40,12 @@ mount the disk, copy [`config.example.toml`](../config.example.toml) to
 `config.toml`, and edit `root`, or run with `--root PATH` for one run.
 `repopull` prints those same steps when it fails.
 
+**"`<path>` isn't accessible yet — the disk may still be mounting" / `where` says `inaccessible`.**
+The path exists but cannot be read, which is what a mount in progress looks
+like. The GUI waits and rescans on its own, every 5 s for up to 10 minutes, and
+**Try again** scans at once. If it never clears, the folder's permissions deny
+this user: fix them (`chmod`/`chown`), or remount the disk as the right owner.
+
 **"watched root is on a different device/filesystem than last time".**
 This guard catches a different disk mounted at the watched path. Device numbers
 can also change after a reboot without the disk changing; btrfs in particular

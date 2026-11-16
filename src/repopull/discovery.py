@@ -5,8 +5,10 @@ from __future__ import annotations
 import fnmatch
 import os
 import shutil
+import stat
 import time
 from collections.abc import Sequence
+from enum import Enum
 from pathlib import Path
 
 from repopull.models import RepoRef
@@ -22,6 +24,37 @@ CLONE_TEMP_MAX_AGE_S = 24 * 60 * 60.0
 
 class DiscoveryError(RuntimeError):
     """Raised when the watched root cannot be scanned."""
+
+
+class RootCondition(Enum):
+    """What one stat of the watched root says right now."""
+
+    READY = "ready"
+    MISSING = "missing"
+    INACCESSIBLE = "inaccessible"
+    NOT_A_DIRECTORY = "not a directory"
+
+
+def root_condition(root: Path) -> RootCondition:
+    """Classify the watched root with a single stat.
+
+    A removable disk that is still being mounted is not searchable yet, and
+    the kernel reports that as permission denied rather than as not found, so
+    "cannot even stat the path" has to mean *not usable yet* — the caller
+    should wait and try again — instead of a hard failure. The raw `os.stat`
+    is deliberate: `Path.exists()` answers this differently across Python
+    versions, raising a `PermissionError` on some and returning `False` on
+    others, and the two answers send callers down opposite paths.
+    """
+    try:
+        mode = os.stat(root).st_mode
+    except FileNotFoundError:
+        return RootCondition.MISSING
+    except OSError:
+        return RootCondition.INACCESSIBLE
+    if stat.S_ISDIR(mode):
+        return RootCondition.READY
+    return RootCondition.NOT_A_DIRECTORY
 
 
 def _ignored(label: str, name: str, patterns: Sequence[str]) -> bool:
@@ -45,10 +78,15 @@ def discover_repos(
     descends into a repository, never follows symlinked directories, and
     ignores the temporary folders used while `repopull clone` is running.
     """
-    if not root.exists():
+    condition = root_condition(root)
+    if condition is RootCondition.MISSING:
         raise DiscoveryError(f"watched root does not exist: {root}")
-    if not root.is_dir():
+    if condition is RootCondition.NOT_A_DIRECTORY:
         raise DiscoveryError(f"watched root is not a directory: {root}")
+    if condition is RootCondition.INACCESSIBLE:
+        raise DiscoveryError(
+            f"{root} isn't accessible yet — the disk may still be mounting"
+        )
     if not os.access(root, os.W_OK | os.X_OK):
         raise DiscoveryError(
             f"watched root is not writable: {root} (permissions, or a "

@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import support
 from repopull import diagnostics
 from repopull.cli import main
 from repopull.config import Config
@@ -217,6 +218,26 @@ class WhereCommandTests(unittest.TestCase):
 
             self.assertEqual(code, 0)
             self.assertIn("MISSING", output.getvalue())
+
+    def test_where_reports_an_unreadable_root_without_crashing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            holder = base / "holder"
+            root = holder / "repos"
+            root.mkdir(parents=True)
+            config_path = self._write_config(base, root)
+            output = io.StringIO()
+
+            with (
+                support.unsearchable(holder),
+                contextlib.redirect_stdout(output),
+            ):
+                code = main(["--config", str(config_path), "where"])
+
+            self.assertEqual(code, 0)
+            text = output.getvalue()
+            self.assertIn("inaccessible", text)
+            self.assertIn("not accessible yet", text)
 
     def test_status_with_missing_root_explains_and_exits_two(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

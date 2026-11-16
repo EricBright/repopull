@@ -9,11 +9,14 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import support
 from repopull.discovery import (
     CLONE_TEMP_MAX_AGE_S,
     CLONE_TEMP_PREFIX,
     DiscoveryError,
+    RootCondition,
     discover_repos,
+    root_condition,
     sweep_stale_clones,
 )
 
@@ -64,6 +67,51 @@ class DiscoveryTests(unittest.TestCase):
     def test_missing_root_raises(self) -> None:
         with self.assertRaisesRegex(DiscoveryError, "does not exist"):
             discover_repos(Path("/definitely/not/here"))
+
+    def test_root_condition_classifies_the_root(self) -> None:
+        root = self._root()
+        (root / "alpha" / ".git").mkdir(parents=True)
+        (root / "a-file").write_text("", encoding="utf-8")
+
+        self.assertIs(root_condition(root), RootCondition.READY)
+        self.assertIs(
+            root_condition(root / "missing"), RootCondition.MISSING
+        )
+        self.assertIs(
+            root_condition(root / "a-file"),
+            RootCondition.NOT_A_DIRECTORY,
+        )
+
+    def test_root_condition_reports_an_unsearchable_parent(self) -> None:
+        base = self._root()
+        holder = base / "holder"
+        (holder / "repos").mkdir(parents=True)
+
+        with support.unsearchable(holder):
+            # A disk mid-mount reports permission denied, not not-found.
+            self.assertIs(
+                root_condition(holder / "repos"),
+                RootCondition.INACCESSIBLE,
+            )
+
+    def test_discover_repos_reports_an_unsearchable_root(self) -> None:
+        base = self._root()
+        holder = base / "holder"
+        root = holder / "repos"
+        root.mkdir(parents=True)
+
+        with (
+            support.unsearchable(holder),
+            self.assertRaisesRegex(DiscoveryError, "isn't accessible yet"),
+        ):
+            discover_repos(root)
+
+    def test_discover_repos_reports_a_file_root(self) -> None:
+        root = self._root()
+        (root / "a-file").write_text("", encoding="utf-8")
+
+        with self.assertRaisesRegex(DiscoveryError, "not a directory"):
+            discover_repos(root / "a-file")
 
     def test_read_only_root_raises(self) -> None:
         root = self._root()

@@ -15,7 +15,12 @@ from pathlib import Path
 
 from repopull import git
 from repopull.config import Config
-from repopull.discovery import DiscoveryError, discover_repos
+from repopull.discovery import (
+    DiscoveryError,
+    RootCondition,
+    discover_repos,
+    root_condition,
+)
 
 
 def _config_label(config: Config) -> str:
@@ -28,9 +33,12 @@ def _config_label(config: Config) -> str:
 def _root_state(config: Config) -> str:
     if config.root is None:
         return "not configured"
-    if not config.root.exists():
+    condition = root_condition(config.root)
+    if condition is RootCondition.MISSING:
         return "MISSING"
-    if not config.root.is_dir():
+    if condition is RootCondition.INACCESSIBLE:
+        return "inaccessible"
+    if condition is RootCondition.NOT_A_DIRECTORY:
         return "not a directory"
     if not os.access(config.root, os.W_OK | os.X_OK):
         return "not writable"
@@ -79,24 +87,33 @@ def describe_paths(config: Config) -> str:
         f"root source: {config.root_source}",
         f"logs:        {config.log_dir}",
     ]
-    if config.root is not None and not config.root.exists():
-        lines.extend(
-            [
-                "",
-                "The root is missing: mount the disk, fix the path, or pass --root.",
-            ]
-        )
-    elif (
-        config.root is not None
-        and config.root.is_dir()
-        and not os.access(config.root, os.W_OK | os.X_OK)
-    ):
-        lines.extend(
-            [
-                "",
-                "The root is not writable: remount it read-write or fix its permissions.",
-            ]
-        )
+    root = config.root
+    if root is not None:
+        condition = root_condition(root)
+        if condition is RootCondition.MISSING:
+            lines.extend(
+                [
+                    "",
+                    "The root is missing: mount the disk, fix the path, or pass --root.",
+                ]
+            )
+        elif condition is RootCondition.INACCESSIBLE:
+            lines.extend(
+                [
+                    "",
+                    "The root is not accessible yet: the disk may still be "
+                    "mounting, or its permissions deny this user.",
+                ]
+            )
+        elif condition is RootCondition.READY and not os.access(
+            root, os.W_OK | os.X_OK
+        ):
+            lines.extend(
+                [
+                    "",
+                    "The root is not writable: remount it read-write or fix its permissions.",
+                ]
+            )
     lines.extend(
         [
             "",

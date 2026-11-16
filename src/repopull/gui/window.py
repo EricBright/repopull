@@ -63,8 +63,11 @@ from PySide6.QtWidgets import (
 from repopull import __version__, autostart, git
 from repopull.clone import CloneResult
 from repopull.config import (
+    STARTUP_DELAY_MAX_S,
+    STARTUP_DELAY_MIN_S,
     Config,
     ConfigError,
+    clamp_startup_delay_s,
     default_config_path,
     load_config,
     save_behavior_settings,
@@ -73,7 +76,9 @@ from repopull.config import (
 )
 from repopull.discovery import (
     DiscoveryError,
+    RootCondition,
     discover_repos,
+    root_condition,
     sweep_stale_clones,
 )
 from repopull.diagnostics import LfsStatus, lfs_status
@@ -251,6 +256,7 @@ class MainWindow(QMainWindow):
         self.refs: list[RepoRef] = []
         self.discovery_error: str | None = None
         self._scanning = discover_async
+        self._startup_pending = False
         self._root_wait_deadline: float | None = None
         self._root_wait_logged = False
         self.root_state_check: RootStateCheck | None = None
@@ -280,6 +286,9 @@ class MainWindow(QMainWindow):
         self.root_wait_timer = QTimer(self)
         self.root_wait_timer.setSingleShot(True)
         self.root_wait_timer.timeout.connect(self._root_wait_due)
+        self.startup_timer = QTimer(self)
+        self.startup_timer.setSingleShot(True)
+        self.startup_timer.timeout.connect(self._startup_delay_elapsed)
         boottime = _boottime()
         self._suspend_detector: SuspendDetector | None = (
             SuspendDetector(max(0.0, boottime - time.monotonic()))
@@ -320,11 +329,23 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(860, 560)
 
         if discover_async:
-            self.discovery_error = (
-                "No watched folder configured. Open Settings and choose one."
-                if config.root is None
-                else "Scanning the watched folder…"
+            # A login starts repopull while the machine is still mounting
+            # disks and starting session services; the quiet period keeps
+            # the first scan out of that window.
+            self._startup_pending = (
+                config.root is not None and config.startup_delay_s > 0
             )
+            if self._startup_pending:
+                self.discovery_error = (
+                    "Starting up — the watched folder will be scanned in "
+                    f"{config.startup_delay_s} s…"
+                )
+            else:
+                self.discovery_error = (
+                    "No watched folder configured. Open Settings and choose one."
+                    if config.root is None
+                    else "Scanning the watched folder…"
+                )
         else:
             self._reload_refs()
         self._build()
@@ -339,7 +360,10 @@ class MainWindow(QMainWindow):
         if self._ui_state is not None and self._ui_state.page == "settings":
             self._show_settings()
         if discover_async:
-            self._start_discovery()
+            if self._startup_pending:
+                self.startup_timer.start(config.startup_delay_s * 1000)
+            else:
+                self._start_discovery()
         elif self._ui_state is not None and self._ui_state.page == "detail":
             self._restore_detail()
 
@@ -1006,6 +1030,25 @@ class MainWindow(QMainWindow):
             )
         )
 
+        self.settings_startup_delay = QSpinBox()
+        self.settings_startup_delay.setRange(
+            STARTUP_DELAY_MIN_S, STARTUP_DELAY_MAX_S
+        )
+        self.settings_startup_delay.setSuffix(" s")
+        self.settings_startup_delay.setAccessibleName("Startup delay")
+        self.settings_startup_delay.valueChanged.connect(
+            self._on_settings_edited
+        )
+        card.add(
+            SettingRow(
+                "Startup delay",
+                "Quiet period after repopull starts before the first scan of "
+                "the watched folder, so a freshly booted system gets time to "
+                "settle. 10–30 seconds; it cannot be turned off.",
+                self.settings_startup_delay,
+            )
+        )
+
         self.settings_update_open = QPushButton("Open release page")
         self.settings_update_open.setObjectName("Ghost")
         self.settings_update_open.setAccessibleName("Open the release page")
@@ -1469,12 +1512,23 @@ class MainWindow(QMainWindow):
 
     # --------------------------------------------------------------- rendering
 
+    def _startup_delay_elapsed(self) -> None:
+        """Begin the first scan once the startup quiet period is over."""
+        if not self._startup_pending or self._quit_requested:
+            return
+        self._start_discovery()
+
     def _start_discovery(
         self, callback: Callable[[], None] | None = None
     ) -> None:
         """Scan in the background so a dead mount cannot freeze the UI."""
         if self._quit_requested:
             return
+        # Any scan supersedes the startup quiet period: an action taken
+        # during the wait starts immediately, and the timer must not start
+        # a second scan when it fires.
+        self._startup_pending = False
+        self.startup_timer.stop()
         self._discovery_generation += 1
         generation = self._discovery_generation
         self._discovery_callback = callback
@@ -1614,19 +1668,29 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------- wait for a mount
 
-    def _root_is_missing(self) -> bool:
+    def _root_unavailable(self) -> bool:
+        """True when the watched root cannot be scanned right now.
+
+        Absent and unreadable answer the same way: keep probing. A disk that
+        is still mounting reports permission denied rather than not found,
+        and this check runs inside the failure handler, so an exception here
+        would kill the very recovery it is about to arm.
+        """
         root = self.config.root
-        return root is not None and not root.exists()
+        return (
+            root is not None
+            and root_condition(root) is not RootCondition.READY
+        )
 
     def _settle_root_wait(self) -> None:
-        """Keep watching for a missing root, or stop once it is back."""
-        if self._root_is_missing():
+        """Keep watching for an unusable root, or stop once it is usable."""
+        if self._root_unavailable():
             self._arm_root_wait()
         else:
             self._stop_root_wait()
 
     def _arm_root_wait(self) -> None:
-        """Probe a missing root instead of leaving the window dead for hours.
+        """Probe an unusable root instead of leaving the window dead for hours.
 
         The watched folder can live on a removable disk that is still being
         mounted when the window starts, which is the normal case right after
@@ -1642,8 +1706,8 @@ class MainWindow(QMainWindow):
                 else ""
             )
             print(
-                "repopull-gui: watched root missing, waiting for it to "
-                f"appear: {self.config.root}{detail}",
+                "repopull-gui: watched root unavailable (missing or "
+                f"unreadable), waiting to scan: {self.config.root}{detail}",
                 file=sys.stderr,
             )
         self.root_wait_timer.start(int(ROOT_WAIT_INTERVAL_S * 1000))
@@ -1659,7 +1723,7 @@ class MainWindow(QMainWindow):
     def _root_wait_due(self) -> None:
         if self._quit_requested or self._root_wait_deadline is None:
             return
-        if not self._root_is_missing():
+        if not self._root_unavailable():
             self._stop_root_wait()
             if self._scanning:
                 return
@@ -1673,9 +1737,20 @@ class MainWindow(QMainWindow):
                 f"{self.config.root}",
                 file=sys.stderr,
             )
-            self._flash(
-                "Gave up waiting for the watched folder; it is still missing."
-            )
+            root = self.config.root
+            if (
+                root is not None
+                and root_condition(root) is RootCondition.INACCESSIBLE
+            ):
+                self._flash(
+                    "Gave up waiting; the watched folder is still not "
+                    "accessible."
+                )
+            else:
+                self._flash(
+                    "Gave up waiting for the watched folder; it is still "
+                    "missing."
+                )
             self._render_library()
             return
         self.root_wait_timer.start(int(ROOT_WAIT_INTERVAL_S * 1000))
@@ -1685,6 +1760,16 @@ class MainWindow(QMainWindow):
         message = self.discovery_error or "Scanning the watched folder…"
         if self._root_wait_deadline is None:
             return message
+        root = self.config.root
+        if (
+            root is not None
+            and root_condition(root) is RootCondition.INACCESSIBLE
+        ):
+            return (
+                message
+                + "\n\nWaiting for it; checking again every "
+                f"{ROOT_WAIT_INTERVAL_S:.0f} s."
+            )
         return (
             message
             + "\n\nWaiting for the folder to appear; checking again every "
@@ -1952,6 +2037,7 @@ class MainWindow(QMainWindow):
         self.settings_background.setChecked(
             self.config.background_mode and self._tray_available
         )
+        self.settings_startup_delay.setValue(self.config.startup_delay_s)
         auto_on = self.config.auto_refresh_s > 0
         self.settings_auto.setChecked(auto_on)
         self.settings_hidden_pause.setChecked(
@@ -2389,6 +2475,9 @@ class MainWindow(QMainWindow):
             auto_refresh_pause_when_hidden=(
                 self.settings_hidden_pause.isChecked()
             ),
+            startup_delay_s=clamp_startup_delay_s(
+                int(self.settings_startup_delay.value())
+            ),
         )
         try:
             save_config(updated, target)
@@ -2427,6 +2516,7 @@ class MainWindow(QMainWindow):
         )
         self.settings_retention.setValue(defaults.log_retention_days)
         self.settings_background.setChecked(False)
+        self.settings_startup_delay.setValue(defaults.startup_delay_s)
         self.settings_auto.setChecked(False)
         self.settings_hidden_pause.setChecked(False)
         blocker = QSignalBlocker(self.settings_auto_minutes)

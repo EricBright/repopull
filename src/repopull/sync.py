@@ -12,6 +12,7 @@ from threading import Event
 
 from repopull import git
 from repopull.config import Config
+from repopull.discovery import RootCondition, root_condition
 from repopull.models import Outcome, RepoRef, RepoState, Report, Row
 from repopull.report import write_log
 
@@ -172,16 +173,19 @@ def _within_root(path: Path, root: Path) -> bool:
 
 
 def _root_gone(config: Config) -> bool:
-    """True when the watched folder is not there any more.
+    """True when the watched folder cannot be used any more.
 
     A removable disk can vanish mid-sweep. Every repository then fails on its
     own, which would report forty disk errors for one unplugged cable, so the
     sweep checks the folder itself instead of trusting one repository's
     failure. This is not a network condition: a single look at the filesystem
-    settles it, and the GUI starts waiting for the folder to come back.
+    settles it, and the GUI starts waiting for the folder to come back. A
+    folder that cannot even be stat'ed counts as gone for the same reason —
+    an unmount in progress reports permission denied, and every remaining
+    repository would fail on that too.
     """
     root = config.root
-    return root is not None and not root.exists()
+    return root is not None and root_condition(root) is not RootCondition.READY
 
 
 def _apply(
