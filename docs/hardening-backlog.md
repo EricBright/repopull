@@ -40,6 +40,21 @@ The Rust decision remains gated and no Rust is built.
 
 ## Current state and next session (2026-11-15)
 
+- **Release 0.8.3:** tag `v0.8.3`,
+  <https://github.com/EricBright/repopull/releases/tag/v0.8.3>. Adds the
+  unusable-root readiness classification (`root_condition()`) and the startup
+  quiet period (`startup_delay_s`). 450 tests, 1 expected failure, mypy strict
+  clean, `make audit` clean, README 1,997 words.
+- **AppImage 0.8.3:** `dist/repopull-0.8.3-x86_64.AppImage`, 46,242,296 bytes,
+  SHA-256 `b2376885...329e34b9`, with
+  `repopull-0.8.3-x86_64.AppImage.zsync` (158,355 bytes,
+  `1859522b...7bc98f87`). `--cli version` reports 0.8.3, `.upd_info`
+  carries the `gh-releases-zsync` string, the `.zsync` SHA-1 matches the image's
+  (`94425e14...b13fe52a`), `sha256sum -c SHA256SUMS.txt` passes, the offscreen
+  smoke test passes against a fixture and against the real watched root, and
+  the extracted `site-packages/repopull` contains `root_condition` and
+  `_startup_delay_elapsed`, so the image is not stale. It differs from 0.8.2 in
+  size, both hashes, `--cli version`, and the extracted code.
 - **Release 0.8.2:** tag `v0.8.2`,
   <https://github.com/EricBright/repopull/releases/tag/v0.8.2>. Adds the
   countdown anchor. 437 tests, 1 expected failure, mypy strict clean,
@@ -49,8 +64,8 @@ The Rust decision remains gated and no Rust is built.
   `repopull-0.8.2-x86_64.AppImage.zsync` (158,341 bytes,
   `173cb5d6...f2d40218ed84a`). `--cli version` reports 0.8.2, `.upd_info`
   carries the `gh-releases-zsync` string, the `.zsync` SHA-1 matches the image's
-  (`58198b82...7f6d6f3c8c`), the offscreen smoke test shows 41 rows on the real
-  watched root, and the extracted `site-packages/repopull` contains
+  (`58198b82...7f6d6f3c8c`), the offscreen smoke test shows the real watched
+  root's full library, and the extracted `site-packages/repopull` contains
   `countdown_anchor` and `_defer_auto_refresh`, so the image is not stale. It is
   the same size as 0.8.1 but not the same file: the SHA-256, the SHA-1 the
   `.zsync` carries, `--cli version`, and the extracted code all differ.
@@ -170,8 +185,8 @@ The Rust decision remains gated and no Rust is built.
   Known gaps left: a remounted disk that lands on a different path is not
   re-found by filesystem UUID, and a dirty tree from an interrupted update needs
   a human.
-- **Countdown anchor (2026-11-15):** the login at 2026-11-15 12:06 found the
-  watched folder six seconds later and then did nothing, because the window
+- **Countdown anchor (2026-11-15):** a login found the watched folder seconds
+  later and then did nothing, because the window
   anchored the refresh interval only in memory and "no check yet" meant a whole
   interval to the schedule decision but "due" to the timer. The anchor is now
   read back from `logs/latest.json` through a wall-clock-to-monotonic
@@ -180,8 +195,21 @@ The Rust decision remains gated and no Rust is built.
   new tests: 4 for the anchor, 1 for `Report.finished_at`, 5 GUI tests covering
   a recent saved check, an old one, none at all, no runnable repository, and a
   log directory that refuses the run. Decision 46 records why.
-- **Next:** nothing is in flight. 0.8.2 carries the countdown anchor fix on top
-  of the mount guard and the power-loss hardening in 0.8.1, and of the
+- **Root readiness and startup delay (2026-11-15):** a scan that lands while a
+  removable disk is still mounting fails with permission denied, not
+  not-found, and `Path.exists()` raises on some Python versions and returns
+  `False` on others — inside the failure handler, so the 10-minute probe never
+  armed and the window sat on a raw errno until **Try again**. Every caller now
+  classifies the root with one raw `os.stat` (`root_condition()`): anything but
+  ready means wait and retry, discovery says "isn't accessible yet — the disk
+  may still be mounting", the sweep treats it like a vanished disk, and `where`
+  says `inaccessible`. New `startup_delay_s` (Settings → **Startup**, 10–30 s,
+  floor 10) holds the first scan back until a freshly started system settles;
+  unattended runs scan at once. 13 new tests, using a real unsearchable
+  directory (skipped when running as root). Decisions 47 and 48 record why.
+- **Next:** nothing is in flight. 0.8.3 carries the root readiness
+  classification and the startup quiet period on top of the countdown anchor
+  in 0.8.2, the mount guard and power-loss hardening in 0.8.1, and the
   `.upd_info` and `.zsync` that 0.8.0
   introduced, so Gear Lever and AppImageUpdate can update an installed copy.
   Known follow-ups: native zsh completion, a `--hidden` start that waits for a

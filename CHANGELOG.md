@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.8.3 — 2026-11-15
+
+- A watched folder that cannot be read yet is now "not usable yet" instead of
+  a failure. A scan that lands while a removable disk is still mounting fails
+  with permission denied rather than not found, and the readiness check used
+  `Path.exists()`, which raises on some Python versions and returns `False` on
+  others — and it ran inside the scan-failure handler, so on a raising version
+  the recovery probe never armed and the window sat on a raw errno until
+  **Try again**. Every caller now classifies the root with one raw `os.stat`
+  (`root_condition()`): anything but ready means wait and retry. Discovery
+  reports it in plain words ("`<path>` isn't accessible yet — the disk may
+  still be mounting"), a sweep treats it like a vanished disk, and
+  `repopull where` says `inaccessible`.
+- New `startup_delay_s` setting (Settings → **Startup**, 10–30 seconds,
+  default 10, floor 10): a GUI start waits out a quiet period before the first
+  scan of the watched folder, and with it anything due to run, so a freshly
+  logged-in system settles before anything asks it for work. Unattended runs
+  (`--screenshot`, `--smoke-test`) scan immediately.
+
 ## 0.8.2 — 2026-11-15
 
 - The automatic status refresh no longer restarts its interval at every launch.
