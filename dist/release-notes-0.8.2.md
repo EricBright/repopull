@@ -1,21 +1,18 @@
 # repopull 0.8.2
 
-This release is about a countdown that started in the wrong place. The app
+This release is about a countdown that started in the wrong place: the app
 found the watched folder at login and then, for hours, did nothing.
 
 ## The interval restarted at every launch
 
-Status refresh is a countdown from the last completed check. On 2026-11-15 the
-window started at 12:06, found the watched folder six seconds later, said
-"Watched folder found; scanning it now.", listed all 41 repositories — and did
-not touch the network again. The last completed check was two days old and the
-interval is three hours, so it should have run at once. It was armed for 15:07.
-
-The anchor for that countdown lived only in memory, and it was empty at every
-start. Worse, the decision table read the empty anchor two different ways: the
-timer event treated it as due, the schedule event as "wait a whole interval".
-Two days of history were on disk in `logs/latest.json` the whole time; nothing
-read them back for scheduling.
+Status refresh is a countdown from the last completed check. The window kept
+that anchor only in memory, so it was empty at every start, and the decision
+table read that empty anchor two different ways: the timer event treated it as
+due, the schedule event as "wait a whole interval". A launch long after the
+last check still waited the full interval before touching the network, and the
+window's own "watched folder found; scanning it now." was the last thing that
+happened. The record of the last check existed on disk all along in
+`logs/latest.json`; nothing read it back for scheduling.
 
 - The saved check is read at startup and converted once into the monotonic
   clock the timers use, so a launch continues the countdown instead of
@@ -36,17 +33,17 @@ records the rule.
 
 ## Verifying the fix
 
-The bug reproduced before the change: three repositories, a three-hour
-interval, no anchor in the session — the timer was armed 10,805 seconds out.
-After it: no saved check and a two-day-old check both arm at zero, a check ten
-minutes old arms 10,201 seconds out, a clock that jumped backwards arms the full
-interval, and an all-excluded or unwritable library defers one interval without
-spinning. 437 tests, mypy strict, `make audit` clean.
+The bug reproduced before the change: a fixture of three repositories, a
+three-hour interval, and no anchor in the session — the timer was armed 10,805
+seconds out. After it: no saved check and a two-day-old check both arm at zero,
+a check ten minutes old arms 10,201 seconds out, a clock that jumped backwards
+arms the full interval, and an all-excluded or unwritable library defers one
+interval without spinning. 437 tests, mypy strict, `make audit` clean.
 
-End to end on the real watched root: with the brief from two days earlier in
-place, a hidden launch of this image took the run lock 40 seconds later and
-completed a status sweep in 193 s (25 behind, 20 up to date, 1 error). The same
-launch before the fix would have waited out the whole three-hour interval.
+End to end on a real watched root: with an old saved brief in place, a hidden
+launch of this image took the run lock within a minute and completed a status
+sweep in about three minutes. The same launch before the fix would have waited
+out the whole three-hour interval.
 
 ## Installing
 
