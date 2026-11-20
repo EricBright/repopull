@@ -232,6 +232,22 @@ The Rust decision remains gated and no Rust is built.
   floor 10) holds the first scan back until a freshly started system settles;
   unattended runs scan at once. 13 new tests, using a real unsearchable
   directory (skipped when running as root). Decisions 47 and 48 record why.
+- **Library memory and its folder (2026-11-20):** the **Sync these** strip
+  counted the last run's report, so a one-repository sync replaced that report
+  and hid the fast path for the other behind repositories — the nav count and
+  the rows still listed them, which is how the mismatch was spotted. The strip
+  now counts the merged outcome table that `_behind_refs()` reads, ticks down as
+  each repository finishes, and is rebuilt at launch from `logs/latest.json`.
+  That snapshot already merged a single sync into the previous rows, so the
+  restart case worked; what it lacked was a tie to the watched folder, and a
+  reused label could show another folder's result and be offered for sync. A
+  different root recorded in `root-state.json` now discards `latest.json` and
+  `latest.log` — at launch, on discovery, and before a CLI run — and the next
+  scan rebuilds them. 7 new tests, 459 total; decision 49 records the rule. The
+  release gate also became reproducible: `make dev-env` builds `.venv` from the
+  pinned requirements, `make check` refuses without PySide6, `typecheck` and
+  `audit` use `$(PYTHON)`, and CI gained a 3.15 leg. README trimmed from 1,997
+  to 1,643 words with its cap lowered to 1,700.
 - **Next:** nothing is in flight. 0.8.4 carries the library-memory fixes on
   top of the root readiness classification and startup quiet period in 0.8.3,
   the countdown anchor in 0.8.2, the mount guard and power-loss hardening in
@@ -241,8 +257,11 @@ The Rust decision remains gated and no Rust is built.
   setup before any self-replacement, re-finding a remounted disk by filesystem
   UUID, and the accepted gaps in [limitations.md](limitations.md). CI runs three
   interpreter legs; the release image stays on the pinned 3.13 runtime.
-- **Resume with:** `make check`, `make audit`, then `make appimage` if the
-  image needs rebuilding.
+- **Resume with:** `make dev-env` once (it builds `.venv` with PySide6 and the
+  pinned tools), then `make check PYTHON=.venv/bin/python` and `make audit
+  PYTHON=.venv/bin/python`. Run `make appimage` if the image needs rebuilding;
+  the tree is clean at tag `v0.8.4`, that release is Latest, and CI is green on
+  3.11, 3.13 and 3.15.
 
 ## Language decision: Python first; no Rust wrappers
 
