@@ -22,8 +22,11 @@ jobs:
       fail-fast: false
       matrix:
         # 3.11 is the declared floor in pyproject.toml; 3.13 is the interpreter
-        # the AppImage ships. Both must pass, so a floor bump needs green CI.
-        python-version: ["3.11", "3.13"]
+        # the AppImage ships; 3.15 is what a current distribution base image
+        # provides and what the development host runs. All must pass, because a
+        # standard-library call can differ between them: 0.8.3 was such a
+        # difference between 3.13 and 3.15.
+        python-version: ["3.11", "3.13", "3.15"]
     steps:
       # Actions are pinned to a commit SHA with the release tag in a comment.
       # A tag is a pointer its owner can move; a SHA cannot, so a compromised

@@ -116,10 +116,18 @@ The Rust decision remains gated and no Rust is built.
   percentages onto one 0–100 scale, the GUI throttles to overall steps, and the
   CLI draws only on a TTY. A local clone that git serves with hardlinks reports
   only start and finish, because git emits nothing in between.
-- **CI matrix:** the `check` job runs on Python 3.11 (the declared floor) and
-  3.13 (the image interpreter), with `fail-fast: false` so both legs report.
-  The runner is pinned to `ubuntu-24.04` while `ubuntu-latest` migrates to
-  26.04 between 19 October and 19 November 2026.
+- **CI matrix:** the `check` job runs on Python 3.11 (the declared floor),
+  3.13 (the image interpreter) and 3.15 (a current distribution base, and the
+  interpreter the development host runs), with `fail-fast: false` so every leg
+  reports. The runner is pinned to `ubuntu-24.04` while `ubuntu-latest`
+  migrates to 26.04 between 19 October and 19 November 2026.
+- **Python 3.15 (unreleased):** a distribution update moved the development
+  host to 3.15 and left the optional GUI dependency uninstalled for it, which
+  exposed `tests/test_icons.py` importing PySide6 unguarded: a checkout without
+  the extra errored instead of skipping, unlike the other GUI test modules. It
+  now uses the same `HAVE_PYSIDE` guard. Nothing users receive changed:
+  `requires-python` stays 3.11 and the image keeps the pinned 3.13 runtime,
+  because the floor and the image runtime are promises, not build convenience.
 - **CI status (2026-11-11):** green on both legs, 330 tests each. The earlier
   reds were the runner failing to resolve Canonical's apt mirrors (`Temporary
   failure resolving 'azure.archive.ubuntu.com'`) in "Install Qt system

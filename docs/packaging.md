@@ -133,10 +133,11 @@ pins PySide6 and certifi. Change them deliberately.
 - **Build inputs:** update the URL and SHA-256 together in
   `packaging/downloads.json`, remove the cached file under `build/downloads/`,
   and rebuild. A checksum mismatch stops the build by design.
-- **Python:** the package supports 3.11+, CI tests 3.11 and 3.13, and the image
-  bundles the pinned 3.13 runtime. Change the CI matrix, the base-image pin, and
-  the `requires-python` floor together; do not raise the floor without a release
-  note.
+- **Python:** the package supports 3.11+, CI tests 3.11 (the floor), 3.13 (the
+  image runtime) and 3.15 (a current distribution base), and the image bundles
+  the pinned 3.13 runtime. Move the base-image pin and the `requires-python`
+  floor together, with a release note; adding a newer interpreter to the CI
+  matrix alone changes nothing users receive.
 - **PySide6 range:** `pyproject.toml` allows `>=6.8,<7` for a source checkout;
   the AppImage uses the exact pin. Test the oldest supported minor before
   widening the range.
