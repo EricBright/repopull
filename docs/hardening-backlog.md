@@ -38,8 +38,25 @@ Action 5 adds CI guardrails. `make test` runs under `-X dev -X faulthandler
 update and pin policy is in [packaging.md](packaging.md#updates-and-dependency-checks).
 The Rust decision remains gated and no Rust is built.
 
-## Current state and next session (2026-11-15)
+## Current state and next session (2026-11-20)
 
+- **Release 0.8.4:** tag `v0.8.4`,
+  <https://github.com/EricBright/repopull/releases/tag/v0.8.4>. The **Sync
+  these** strip counts merged outcomes, so a single-repository sync no longer
+  hides it; saved results are discarded when the watched folder changes; and
+  `make dev-env` plus a `make check` preflight make the release gate
+  reproducible. 459 tests, 1 expected failure, mypy strict clean, `make audit`
+  clean, README 1,643 words.
+- **AppImage 0.8.4:** `dist/repopull-0.8.4-x86_64.AppImage`, 46,242,296 bytes,
+  SHA-256 `ed1c8eb7...3544e17`, with `repopull-0.8.4-x86_64.AppImage.zsync`
+  (158,355 bytes, `8aaea084...2e684c`). `--cli version` reports 0.8.4,
+  `.upd_info` carries the `gh-releases-zsync` string, the `.zsync` SHA-1 matches
+  the image's (`c9ebaa25...0ac43`), `sha256sum -c SHA256SUMS.txt` passes, the
+  offscreen smoke test passes on a two-repository fixture and the build's own
+  smoke on the real watched root, and the extracted `site-packages/repopull`
+  contains `clear_saved_snapshot` and `_adopt_saved_root`, so the image is not
+  stale. It keeps the pinned 3.13 runtime and is the first image built after CI
+  gained the 3.15 leg.
 - **Release 0.8.3:** tag `v0.8.3`,
   <https://github.com/EricBright/repopull/releases/tag/v0.8.3>. Adds the
   unusable-root readiness classification (`root_condition()`) and the startup
@@ -215,15 +232,15 @@ The Rust decision remains gated and no Rust is built.
   floor 10) holds the first scan back until a freshly started system settles;
   unattended runs scan at once. 13 new tests, using a real unsearchable
   directory (skipped when running as root). Decisions 47 and 48 record why.
-- **Next:** nothing is in flight. 0.8.3 carries the root readiness
-  classification and the startup quiet period on top of the countdown anchor
-  in 0.8.2, the mount guard and power-loss hardening in 0.8.1, and the
-  `.upd_info` and `.zsync` that 0.8.0
-  introduced, so Gear Lever and AppImageUpdate can update an installed copy.
-  Known follow-ups: native zsh completion, a `--hidden` start that waits for a
-  late tray host, signature-key setup before any self-replacement, re-finding a
-  remounted disk by filesystem UUID, and the accepted gaps in
-  [limitations.md](limitations.md).
+- **Next:** nothing is in flight. 0.8.4 carries the library-memory fixes on
+  top of the root readiness classification and startup quiet period in 0.8.3,
+  the countdown anchor in 0.8.2, the mount guard and power-loss hardening in
+  0.8.1, and the `.upd_info` and `.zsync` that 0.8.0 introduced, so Gear Lever
+  and AppImageUpdate can update an installed copy. Known follow-ups: native zsh
+  completion, a `--hidden` start that waits for a late tray host, signature-key
+  setup before any self-replacement, re-finding a remounted disk by filesystem
+  UUID, and the accepted gaps in [limitations.md](limitations.md). CI runs three
+  interpreter legs; the release image stays on the pinned 3.13 runtime.
 - **Resume with:** `make check`, `make audit`, then `make appimage` if the
   image needs rebuilding.
 

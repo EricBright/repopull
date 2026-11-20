@@ -15,7 +15,7 @@ packages; the optional GUI needs PySide6, and the AppImage (x86_64) bundles both
 
 ## Status
 
-**Current release: 0.8.3.** 450 tests and `mypy --strict` pass. The 0.8.3
+**Current release: 0.8.4.** 459 tests and `mypy --strict` pass. The 0.8.4
 AppImage is 46 MB, survives a late or unplugged disk, and runs an overdue check
 at login. The [test audit](docs/test-falsifiability.md) covers 0.2.3 and the
 2026-11-07 re-audit covers 0.4.13; [CHANGELOG.md](CHANGELOG.md) records each
@@ -128,14 +128,14 @@ importable, otherwise it lets `uv` provide it for that run.
 
 ```bash
 make appimage
-./dist/repopull-0.8.3-x86_64.AppImage
+./dist/repopull-0.8.4-x86_64.AppImage
 ```
 
 The image bundles Python 3.13, PySide6 and repopull. Run the CLI from it with
 `--cli`:
 
 ```bash
-./dist/repopull-0.8.3-x86_64.AppImage --cli status
+./dist/repopull-0.8.4-x86_64.AppImage --cli status
 ```
 
 It keeps `config.toml` and logs in `~/.config/repopull` (or `$REPOPULL_HOME`).
@@ -232,7 +232,7 @@ make audit       # check packaging pins against known advisories
 make soak        # CLI resource soak against throwaway local repos
 make soak-qt     # Qt window create/close soak
 make gui         # launch the optional PySide6 interface
-make appimage    # build dist/repopull-0.8.3-x86_64.AppImage
+make appimage    # build dist/repopull-0.8.4-x86_64.AppImage
 make bump        # increment the patch version
 make release     # check, bump the patch, build the AppImage
 ```

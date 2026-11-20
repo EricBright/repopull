@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.8.4 — 2026-11-20
+
+- The **Sync these** strip counts every repository whose saved result is behind,
+  not only the rows from the last run. Syncing one repository from its detail
+  page no longer takes the fast path away for the rest: the strip stays, its
+  count drops as each repository finishes, and it disappears when nothing
+  syncable is left. The count and the button's target set are the same table, so
+  they cannot disagree.
+- Saved results are tied to the watched folder. When the configured folder
+  differs from the one recorded for the last scan, the window shows "Not
+  checked" instead of another library's counts, and both the window and the CLI
+  discard the merged `latest` snapshot so a reused repository name cannot
+  inherit an old result; the next scan rebuilds it. Timestamped run logs stay.
+- `make dev-env` builds a `.venv` from the pinned requirements, and `make check`
+  refuses to run when PySide6 is missing instead of letting the GUI tests skip
+  silently. Type checking and the dependency audit use the interpreter named by
+  `PYTHON`. CI also runs the suite on Python 3.15; the package still supports
+  3.11+ and the image still bundles the pinned 3.13 runtime.
+
 ## 0.8.3 — 2026-11-15
 
 - A watched folder that cannot be read yet is now "not usable yet" instead of
