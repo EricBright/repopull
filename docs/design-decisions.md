@@ -230,7 +230,9 @@ only rows the last report marked behind. Both are labelled "from the last check"
 **Consequences:** A full sweep is the safe default; a remote may have moved since
 the last report. The fast path skips up-to-date repositories entirely, but it can
 miss a change that happened after the last check. Refresh status first when in
-doubt.
+doubt. The banner counts each repository's saved outcome rather than the last
+run's report, so a single-repository sync cannot take the fast path away from the
+repositories it did not touch: the count always equals what the button would do.
 
 ## 20. Semantic version bumps, not a hidden build counter
 

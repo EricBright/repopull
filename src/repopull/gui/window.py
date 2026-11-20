@@ -1951,25 +1951,27 @@ class MainWindow(QMainWindow):
         self.nav_buttons["errors"].setText(f"Errors  {counts[Outcome.ERROR]}")
 
     def _update_banner(self) -> None:
+        """Count what the last check left behind and the user may still sync.
+
+        The counts come from the merged outcome table, not from the last
+        report: a single-repository sync replaces the report with one row, and
+        the strip must outlive it while other repositories remain. This is the
+        same table `_behind_refs` reads, so the count and the button's target
+        set cannot disagree.
+        """
         actionable = 0
         held = 0
         if self.report is not None:
-            labels = {
-                ref.label
-                for ref in self.refs
-                if not self.config.skips_refresh(ref.label)
-            }
-            behind_rows = [
-                row
-                for row in self.report.rows
-                if row.outcome is Outcome.BEHIND and row.label in labels
-            ]
-            actionable = sum(
-                1
-                for row in behind_rows
-                if not self.config.skips_sync(row.label)
-            )
-            held = len(behind_rows) - actionable
+            for ref in self.refs:
+                if self.config.skips_refresh(ref.label):
+                    continue
+                row = self.rows_by_label.get(ref.label)
+                if row is None or row.outcome is not Outcome.BEHIND:
+                    continue
+                if self.config.skips_sync(ref.label):
+                    held += 1
+                else:
+                    actionable += 1
         if actionable:
             noun = "repository" if actionable == 1 else "repositories"
             text = (

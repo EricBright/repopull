@@ -1155,6 +1155,93 @@ if HAVE_PYSIDE:
                 )
                 window.close()
 
+        def test_single_repo_sync_keeps_the_banner_for_the_rest(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = self._tree(base)
+                write_log(
+                    Report(
+                        mode="status",
+                        started_at=datetime(2026, 11, 5, 16, 0, 0),
+                        elapsed_s=1.0,
+                        rows=(
+                            Row("alpha", "main", Outcome.BEHIND, 3, ""),
+                            Row("beta", "main", Outcome.BEHIND, 4, ""),
+                            Row("gamma", "main", Outcome.BEHIND, 5, ""),
+                        ),
+                    ),
+                    base / "logs",
+                )
+                window = MainWindow(self._config(base, root))
+                self.assertIn(
+                    "3 repositories can be updated",
+                    window.banner_label.text(),
+                )
+                self.assertFalse(window.banner_button.isHidden())
+
+                window._on_finished(
+                    Report(
+                        mode="sync",
+                        started_at=datetime(2026, 11, 5, 16, 5, 0),
+                        elapsed_s=1.0,
+                        rows=(
+                            Row("alpha", "main", Outcome.UPDATED, 3, ""),
+                        ),
+                    )
+                )
+
+                self.assertIn(
+                    "2 repositories can be updated",
+                    window.banner_label.text(),
+                )
+                self.assertFalse(window.banner_button.isHidden())
+                self.assertEqual(
+                    [ref.label for ref in window._behind_refs()],
+                    ["beta", "gamma"],
+                )
+                self.assertEqual(
+                    window.nav_buttons["behind"].text(), "Behind  2"
+                )
+                window.close()
+
+        def test_the_banner_counts_down_as_rows_finish(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = self._tree(base)
+                write_log(
+                    Report(
+                        mode="status",
+                        started_at=datetime(2026, 11, 5, 16, 0, 0),
+                        elapsed_s=1.0,
+                        rows=(
+                            Row("alpha", "main", Outcome.BEHIND, 3, ""),
+                            Row("beta", "main", Outcome.BEHIND, 4, ""),
+                            Row("gamma", "main", Outcome.BEHIND, 5, ""),
+                        ),
+                    ),
+                    base / "logs",
+                )
+                window = MainWindow(self._config(base, root))
+
+                window._on_row(
+                    Row("alpha", "main", Outcome.UPDATED, 3, "")
+                )
+                self.assertIn(
+                    "2 repositories can be updated",
+                    window.banner_label.text(),
+                )
+                window._on_row(
+                    Row("beta", "main", Outcome.UPDATED, 1, "")
+                )
+                self.assertIn(
+                    "1 repository can be updated", window.banner_label.text()
+                )
+                window._on_row(
+                    Row("gamma", "main", Outcome.UP_TO_DATE, 0, "")
+                )
+                self.assertTrue(window.banner.isHidden())
+                window.close()
+
         def test_settings_save_changes_root(self) -> None:
             with tempfile.TemporaryDirectory() as tmp:
                 base = Path(tmp)

@@ -81,7 +81,10 @@ restored; a detail page is restored only if that repository is still present.
   removes one that is a day old, since no clone runs that long.
 - **Banner**: "N repositories can be updated" with a **Sync these** button.
   When some behind repositories are held out of Sync all, the banner reads
-  "N can be updated · M held" and the button updates only the N.
+  "N can be updated · M held" and the button updates only the N. The count
+  follows each repository's saved outcome, not one run's report, so updating a
+  single repository from its detail page leaves the banner up for the rest and
+  the count drops as each one finishes.
 - **Refresh status** fetches and reports without changing any working tree.
 - **Sync all** rechecks every remote, then fast-forwards what is behind. This is
   the correct full sweep: a remote may have moved since the last report.
