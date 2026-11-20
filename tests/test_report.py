@@ -14,6 +14,7 @@ from unittest.mock import patch
 from repopull.models import Outcome, Report, Row
 from repopull.report import (
     check_log_dir,
+    clear_saved_snapshot,
     load_latest_report,
     prune_logs,
     render_report,
@@ -158,6 +159,29 @@ class ReportRoundTripTests(unittest.TestCase):
         self.assertIn("Totals: 1 behind, 1 skipped", text)
         self.assertIn("Attention:", text)
         self.assertIn("beta: dirty working tree", text)
+
+
+class SnapshotTests(unittest.TestCase):
+    def test_clearing_removes_both_latest_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            log_dir = Path(tmp)
+            write_log(_report(), log_dir)
+            run_logs = sorted(path.name for path in log_dir.glob("*.log"))
+            self.assertIn("latest.log", run_logs)
+
+            problems = clear_saved_snapshot(log_dir)
+
+            self.assertEqual(problems, [])
+            self.assertFalse((log_dir / "latest.json").exists())
+            self.assertFalse((log_dir / "latest.log").exists())
+            # Timestamped run logs are history and stay.
+            self.assertTrue(
+                [path for path in log_dir.glob("*status.log")]
+            )
+
+    def test_clearing_nothing_is_not_an_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(clear_saved_snapshot(Path(tmp)), [])
 
 
 class LogRetentionTests(unittest.TestCase):

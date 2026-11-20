@@ -186,7 +186,10 @@ The GUI calls `status_report()` / `sync_report()` in a worker thread. Both accep
 an `on_row` callback, which fires as soon as one repository has been fetched and
 classified, so the window paints each chip while the sweep is still running.
 `logs/latest.json` is a **per-repository snapshot**: a single-repo sync merges its
-row into the previous snapshot instead of replacing it. A run holds
+row into the previous snapshot instead of replacing it, so a window that starts
+after that sync still shows every repository's last result. A different watched
+folder discards the snapshot instead of showing another library's rows (decision
+49), and both the GUI and the CLI do this before their next run. A run holds
 `logs/.lock`, so the GUI and the CLI cannot overlap.
 
 ## Packaging

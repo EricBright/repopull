@@ -108,14 +108,20 @@ from repopull.refresh import (
     decide_refresh,
     should_warn,
 )
-from repopull.report import check_log_dir, load_latest_report
+from repopull.report import (
+    check_log_dir,
+    clear_saved_snapshot,
+    load_latest_report,
+)
 from repopull.rootstate import (
     ROOT_STATE_FILE,
+    RootState,
     RootStateChanged,
     RootStateCheck,
     check_root_state,
     describe_identity,
     describe_state,
+    read_root_state,
     repair_root_state,
 )
 from repopull.uistate import UiState, load_ui_state, save_ui_state
@@ -247,6 +253,7 @@ class MainWindow(QMainWindow):
         self._check_generation = 0
         self._ui_state = load_ui_state(config.config_path)
         self.report: Report | None = load_latest_report(config.log_dir)
+        self._adopt_saved_root(read_root_state(config.log_dir).state)
         self.rows_by_label: dict[str, Row] = (
             {row.label: row for row in self.report.rows}
             if self.report is not None
@@ -1585,6 +1592,7 @@ class MainWindow(QMainWindow):
             self.discovery_error = "root-state check returned no result"
         else:
             self.root_state_check = check
+            self._adopt_saved_root(check.previous)
             if check.problem is not None:
                 self.refs = []
                 self.discovery_error = self._root_state_message(check)
@@ -1632,6 +1640,36 @@ class MainWindow(QMainWindow):
             "if this is intentional."
         )
 
+    def _forget_saved_results(self) -> None:
+        """Drop the merged snapshot after the watched folder changes.
+
+        `logs/latest.json` holds one merged row per label and no record of the
+        folder those rows came from, so a new repository that happens to share a
+        label would otherwise show the old library's result. Timestamped run
+        logs stay for history; the snapshot is rebuilt by the next run.
+        """
+        self.report = None
+        self.rows_by_label = {}
+        # With no saved check left, the next one is due now rather than after
+        # the interval that belonged to the old folder.
+        self._last_network_finished = None
+        for problem in clear_saved_snapshot(self.config.log_dir):
+            print(f"repopull-gui: {problem}", file=sys.stderr)
+
+    def _adopt_saved_root(self, previous: RootState | None) -> None:
+        """Forget saved results that belong to a different watched folder."""
+        root = self.config.root
+        if previous is None or root is None:
+            return
+        if previous.root == str(root):
+            return
+        print(
+            "repopull-gui: watched folder changed; forgetting results saved "
+            f"for {previous.root}",
+            file=sys.stderr,
+        )
+        self._forget_saved_results()
+
     def _reload_refs(self) -> None:
         self._scanning = False
         root = self.config.root
@@ -1658,6 +1696,7 @@ class MainWindow(QMainWindow):
             self.config.log_dir, root, len(self.refs)
         )
         self.root_state_check = check
+        self._adopt_saved_root(check.previous)
         if check.problem is not None:
             self.refs = []
             self.discovery_error = self._root_state_message(check)

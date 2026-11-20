@@ -84,7 +84,10 @@ restored; a detail page is restored only if that repository is still present.
   "N can be updated · M held" and the button updates only the N. The count
   follows each repository's saved outcome, not one run's report, so updating a
   single repository from its detail page leaves the banner up for the rest and
-  the count drops as each one finishes.
+  the count drops as each one finishes. The same memory survives a restart:
+  `logs/latest.json` holds the merged last result per repository, and it is
+  discarded when the watched folder changes so one library's results never
+  describe another's repositories.
 - **Refresh status** fetches and reports without changing any working tree.
 - **Sync all** rechecks every remote, then fast-forwards what is behind. This is
   the correct full sweep: a remote may have moved since the last report.

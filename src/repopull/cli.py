@@ -31,6 +31,7 @@ from repopull.menu import run_menu
 from repopull.models import Outcome, RepoRef
 from repopull.report import (
     check_log_dir,
+    clear_saved_snapshot,
     load_latest_report,
     render_report,
     report_to_dict,
@@ -204,6 +205,14 @@ def _select_refs(config: Config, patterns: Sequence[str]) -> list[RepoRef] | Non
     root, refs = discovered
 
     check = check_root_state(config.log_dir, root, len(refs))
+    if check.previous is not None and check.previous.root != str(root):
+        print(
+            "repopull: watched folder changed; discarding results saved for "
+            f"{check.previous.root}",
+            file=sys.stderr,
+        )
+        for problem in clear_saved_snapshot(config.log_dir):
+            print(f"repopull: {problem}", file=sys.stderr)
     if check.problem is not None:
         print(f"repopull: {check.problem}", file=sys.stderr)
         if check.repairable:

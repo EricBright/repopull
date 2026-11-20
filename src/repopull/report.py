@@ -134,6 +134,25 @@ def _atomic_write_text(path: Path, text: str) -> None:
             pass
 
 
+def clear_saved_snapshot(log_dir: Path) -> list[str]:
+    """Remove the merged `latest` snapshot; timestamped run logs stay.
+
+    The snapshot holds one row per label with no record of the watched folder
+    that produced it, so it must not outlive a change of folder. Returns one
+    message per file that could not be removed; missing files are not errors.
+    """
+    problems: list[str] = []
+    for name in ("latest.json", "latest.log"):
+        path = log_dir / name
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            problems.append(f"could not clear {path}: {exc}")
+    return problems
+
+
 def check_log_dir(log_dir: Path) -> str | None:
     """Return a refusal message when the log directory cannot take a run."""
     try:

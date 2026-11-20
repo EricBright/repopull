@@ -45,7 +45,7 @@ if HAVE_PYSIDE:
     from repopull.gui.instance import ask_to_show
     from repopull.gui.window import DiscoveryTask, MainWindow
     from repopull.mounts import root_identity
-    from repopull.rootstate import RootStateCheck
+    from repopull.rootstate import RootStateCheck, save_root_state
     from repopull.updates import Release, Version
     from repopull.models import Outcome, Report, Row
     from repopull.refresh import SuspendDetector
@@ -1240,6 +1240,163 @@ if HAVE_PYSIDE:
                     Row("gamma", "main", Outcome.UP_TO_DATE, 0, "")
                 )
                 self.assertTrue(window.banner.isHidden())
+                window.close()
+
+        def test_a_restart_rebuilds_the_strip_from_the_merged_log(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = self._tree(base)
+                log_dir = base / "logs"
+                write_log(
+                    Report(
+                        mode="status",
+                        started_at=datetime(2026, 11, 5, 16, 0, 0),
+                        elapsed_s=1.0,
+                        rows=(
+                            Row("alpha", "main", Outcome.BEHIND, 3, ""),
+                            Row("beta", "main", Outcome.BEHIND, 4, ""),
+                            Row("gamma", "main", Outcome.BEHIND, 5, ""),
+                        ),
+                    ),
+                    log_dir,
+                )
+                write_log(
+                    Report(
+                        mode="sync",
+                        started_at=datetime(2026, 11, 5, 16, 5, 0),
+                        elapsed_s=1.0,
+                        rows=(
+                            Row("alpha", "main", Outcome.UPDATED, 3, ""),
+                        ),
+                    ),
+                    log_dir,
+                )
+
+                # A new window is a restart: it reads only the saved log.
+                window = MainWindow(self._config(base, root))
+
+                self.assertIn(
+                    "2 repositories can be updated",
+                    window.banner_label.text(),
+                )
+                self.assertFalse(window.banner_button.isHidden())
+                self.assertEqual(
+                    [ref.label for ref in window._behind_refs()],
+                    ["beta", "gamma"],
+                )
+                self.assertEqual(
+                    window.nav_buttons["behind"].text(), "Behind  2"
+                )
+                self.assertEqual(
+                    window.row_widgets["alpha"].chip.text(), "Up to date"
+                )
+                window.close()
+
+        def test_a_different_root_forgets_the_old_library(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                old_root = base / "old"
+                new_root = base / "new"
+                for name in ("alpha", "beta"):
+                    (old_root / name / ".git").mkdir(parents=True)
+                (new_root / "alpha" / ".git").mkdir(parents=True)
+                log_dir = base / "logs"
+                write_log(
+                    Report(
+                        mode="status",
+                        started_at=datetime(2026, 11, 5, 16, 0, 0),
+                        elapsed_s=1.0,
+                        rows=(
+                            Row("alpha", "main", Outcome.BEHIND, 3, ""),
+                            Row("beta", "main", Outcome.BEHIND, 4, ""),
+                        ),
+                    ),
+                    log_dir,
+                )
+                save_root_state(log_dir, old_root, 2)
+
+                window = MainWindow(self._config(base, new_root))
+
+                # Same label, different library: the old "behind" must not
+                # describe the new folder's repository.
+                self.assertIsNone(window.report)
+                self.assertTrue(window.banner.isHidden())
+                self.assertEqual(
+                    window.row_widgets["alpha"].chip.text(), "Not checked"
+                )
+                self.assertFalse((log_dir / "latest.json").exists())
+                window.close()
+
+        def test_changing_the_root_mid_session_forgets_the_old_rows(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                old_root = base / "old"
+                new_root = base / "new"
+                for name in ("alpha", "beta"):
+                    (old_root / name / ".git").mkdir(parents=True)
+                (new_root / "alpha" / ".git").mkdir(parents=True)
+                log_dir = base / "logs"
+                write_log(
+                    Report(
+                        mode="status",
+                        started_at=datetime(2026, 11, 5, 16, 0, 0),
+                        elapsed_s=1.0,
+                        rows=(
+                            Row("alpha", "main", Outcome.BEHIND, 3, ""),
+                            Row("beta", "main", Outcome.BEHIND, 4, ""),
+                        ),
+                    ),
+                    log_dir,
+                )
+                window = MainWindow(self._config(base, old_root))
+                self.assertIn(
+                    "2 repositories can be updated",
+                    window.banner_label.text(),
+                )
+
+                window.config = dataclasses.replace(
+                    window.config, root=new_root
+                )
+                window._reload_refs()
+                window._render_library()
+
+                self.assertIsNone(window.report)
+                self.assertIsNone(window._last_network_finished)
+                self.assertTrue(window.banner.isHidden())
+                self.assertEqual(
+                    window.row_widgets["alpha"].chip.text(), "Not checked"
+                )
+                window.close()
+
+        def test_the_same_root_keeps_the_saved_rows(self) -> None:
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                root = self._tree(base)
+                log_dir = base / "logs"
+                write_log(
+                    Report(
+                        mode="status",
+                        started_at=datetime(2026, 11, 5, 16, 0, 0),
+                        elapsed_s=1.0,
+                        rows=(
+                            Row("alpha", "main", Outcome.BEHIND, 3, ""),
+                            Row("beta", "main", Outcome.UP_TO_DATE, 0, ""),
+                            Row("gamma", "main", Outcome.UP_TO_DATE, 0, ""),
+                        ),
+                    ),
+                    log_dir,
+                )
+                save_root_state(log_dir, root, 3)
+
+                window = MainWindow(self._config(base, root))
+
+                self.assertIn(
+                    "1 repository can be updated",
+                    window.banner_label.text(),
+                )
+                self.assertEqual(
+                    window.row_widgets["alpha"].chip.text(), "Behind"
+                )
                 window.close()
 
         def test_settings_save_changes_root(self) -> None:

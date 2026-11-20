@@ -2,7 +2,7 @@ PYTHON ?= python3
 PYTHONPATH := src
 PART ?= patch
 
-.PHONY: run gui test typecheck check audit soak soak-qt bump release appimage clean
+.PHONY: run gui dev-env check-env test typecheck check audit soak soak-qt bump release appimage clean
 
 run:
 	./bin/repopull
@@ -13,20 +13,36 @@ gui:
 test:
 	QT_QPA_PLATFORM=offscreen PYTHONPATH=$(PYTHONPATH) $(PYTHON) -X dev -X faulthandler -W error -m unittest discover -s tests -v
 
+dev-env:
+	$(PYTHON) -m venv .venv
+	.venv/bin/python -m pip install --upgrade pip
+	.venv/bin/python -m pip install -e '.[gui]' \
+		-c packaging/runtime-requirements.txt \
+		-r packaging/ci-requirements.txt
+	@echo "Ready: make check PYTHON=.venv/bin/python"
+
+check-env:
+	@$(PYTHON) -c "import PySide6" 2>/dev/null || { \
+		echo "PySide6 is missing for $(PYTHON)."; \
+		echo "The GUI tests would be skipped, so this gate would pass blind."; \
+		echo "Run 'make dev-env', then 'make check PYTHON=.venv/bin/python'."; \
+		exit 1; \
+	}
+
 typecheck:
-	@if mypy --version >/dev/null 2>&1; then \
-		mypy --config-file pyproject.toml; \
+	@if $(PYTHON) -m mypy --version >/dev/null 2>&1; then \
+		$(PYTHON) -m mypy --config-file pyproject.toml; \
 	else \
-		echo "mypy not installed; using uvx"; \
+		echo "mypy not installed for $(PYTHON); using uvx"; \
 		uvx mypy --config-file pyproject.toml; \
 	fi
 
 audit:
-	@if command -v pip-audit >/dev/null 2>&1; then \
-		pip-audit -r packaging/runtime-requirements.txt; \
-		pip-audit -r packaging/build-requirements.txt; \
+	@if $(PYTHON) -m pip_audit --version >/dev/null 2>&1; then \
+		$(PYTHON) -m pip_audit -r packaging/runtime-requirements.txt; \
+		$(PYTHON) -m pip_audit -r packaging/build-requirements.txt; \
 	else \
-		echo "pip-audit not installed; using uvx"; \
+		echo "pip-audit not installed for $(PYTHON); using uvx"; \
 		uvx pip-audit -r packaging/runtime-requirements.txt; \
 		uvx pip-audit -r packaging/build-requirements.txt; \
 	fi
@@ -44,7 +60,7 @@ appimage:
 	build/packaging-env/bin/python -m pip install -r packaging/build-requirements.txt
 	build/packaging-env/bin/python packaging/build_appimage.py
 
-check: typecheck test
+check: check-env typecheck test
 
 soak:
 	PYTHONPATH=$(PYTHONPATH) $(PYTHON) tools/soak.py

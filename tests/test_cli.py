@@ -16,6 +16,7 @@ from repopull import __version__
 from repopull.cli import main
 from repopull.models import Outcome, Report, Row
 from repopull.report import write_log
+from repopull.rootstate import save_root_state
 from repopull.runtime import run_lock
 from repopull.updates import Release, UpdateError, Version
 
@@ -358,6 +359,57 @@ class RepairRootTests(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertIn("not usable", errors.getvalue())
             self.assertEqual(path.read_text(encoding="utf-8"), "{not json")
+
+
+class RootChangeTests(unittest.TestCase):
+    def _config(self, base: Path) -> Path:
+        root = base / "repos"
+        for name in ("alpha", "beta", "gamma"):
+            (root / name / ".git").mkdir(parents=True)
+        path = base / "config.toml"
+        path.write_text(
+            f'root = "{root}"\nlog_dir = "{base / "logs"}"\n',
+            encoding="utf-8",
+        )
+        return path
+
+    def test_a_changed_root_discards_the_previous_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            config_path = self._config(base)
+            logs = base / "logs"
+            write_log(
+                Report(
+                    mode="status",
+                    started_at=datetime(2026, 11, 5, 16, 0, 0),
+                    elapsed_s=1.0,
+                    rows=(Row("alpha", "main", Outcome.BEHIND, 3, ""),),
+                ),
+                logs,
+            )
+            old_root = base / "old"
+            old_root.mkdir()
+            save_root_state(logs, old_root, 1)
+            errors = io.StringIO()
+
+            with (
+                patch(
+                    "repopull.cli.status_report",
+                    return_value=Report(
+                        mode="status",
+                        started_at=datetime(2026, 11, 20, 9, 0),
+                        elapsed_s=0.1,
+                        rows=(),
+                    ),
+                ),
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(errors),
+            ):
+                code = main(["--config", str(config_path), "status"])
+
+            self.assertEqual(code, 0)
+            self.assertIn("watched folder changed", errors.getvalue())
+            self.assertFalse((logs / "latest.json").exists())
 
 
 class CloneCommandTests(unittest.TestCase):

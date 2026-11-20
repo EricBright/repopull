@@ -949,4 +949,20 @@ practice, and a manual start gets the same quiet period — ten seconds of
 deliberately enforces. The wait applies to every launch, cost included, and
 decision 47's probe still covers any mount that outlasts it.
 
+## 49. Saved results belong to the watched folder that produced them
+
+**Context:** `logs/latest.json` merges a single-repository sync into the previous
+snapshot so no repository's last result is lost. The merge keys rows by label,
+and a label is only unique inside one watched folder.
+
+**Decision:** When the configured root differs from the root recorded in
+`root-state.json`, the window discards the saved snapshot — `latest.json` and
+`latest.log`; timestamped run logs stay — instead of showing it, and the next
+scan rebuilds it. This happens at launch and when the root changes in Settings.
+
+**Consequences:** Pointing repopull at another folder never shows that folder a
+"behind" count, an **Sync these** offer, or a chip that belongs to the previous
+library, even when a repository name repeats. Switching back also starts without
+history until the next scan, which is the price of not guessing.
+
 For the full documentation index, see [README.md](../README.md#documentation-index).

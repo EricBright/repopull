@@ -55,7 +55,7 @@ class DocumentationTests(unittest.TestCase):
 
         self.assertLessEqual(
             words,
-            2000,
+            1700,
             f"README is {words} words; move detail to its on-demand doc and leave a "
             "link, or raise the cap deliberately",
         )
